@@ -1,0 +1,357 @@
+//go:build e2e
+
+// Package e2e drives the playground in headless Chromium through Playwright:
+// it makes the sample image, browses it, views and downloads files, opens an
+// image whose file names are HTML, and (with E2E_IMAGE) measures open and
+// list times on a real image with and without the block cache.
+//
+//	go run ./cmd/site playwright-driver --dir DIR
+//	PLAYWRIGHT_DRIVER_PATH=DIR PLAYWRIGHT_NODEJS_PATH=$(command -v node) go test -tags e2e ./e2e/
+//
+// E2E_URL tests a deployed site instead of a local build; E2E_REPORT=<file>
+// writes the measurements as JSON.
+package e2e
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"testing"
+	"time"
+
+	filesystem_ext4 "github.com/go-filesystems/ext4"
+	"github.com/playwright-community/playwright-go"
+
+	"github.com/go-filesystems/playground/internal/site"
+)
+
+var siteDir string
+
+func TestMain(m *testing.M) {
+	if os.Getenv("E2E_URL") != "" {
+		os.Exit(m.Run())
+	}
+	dir, err := os.MkdirTemp("", "e2e-site-")
+	if err != nil {
+		panic(err)
+	}
+	siteDir = filepath.Join(dir, "site")
+	if _, err := site.Build(context.Background(), site.Options{Root: "..", Out: siteDir, Log: os.Stderr}); err != nil {
+		fmt.Fprintln(os.Stderr, "site build:", err)
+		os.Exit(1)
+	}
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
+}
+
+func baseURL(t *testing.T) string {
+	if u := os.Getenv("E2E_URL"); u != "" {
+		return u
+	}
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &http.Server{Handler: site.Handler(siteDir, "/playground")}
+	go srv.Serve(l)
+	t.Cleanup(func() { srv.Close() })
+	return "http://" + l.Addr().String() + "/playground/"
+}
+
+type browser struct {
+	page    playwright.Page
+	console []string
+}
+
+func launch(t *testing.T) *browser {
+	t.Helper()
+	pw, err := playwright.Run(&playwright.RunOptions{SkipInstallBrowsers: true})
+	if err != nil {
+		t.Fatalf("playwright: %v", err)
+	}
+	t.Cleanup(func() { pw.Stop() })
+	b, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{Headless: playwright.Bool(true)})
+	if err != nil {
+		t.Fatalf("chromium: %v", err)
+	}
+	t.Cleanup(func() { b.Close() })
+	ctx, err := b.NewContext(playwright.BrowserNewContextOptions{AcceptDownloads: playwright.Bool(true)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := ctx.NewPage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	br := &browser{page: page}
+	page.On("console", func(m playwright.ConsoleMessage) { br.console = append(br.console, m.Text()) })
+	page.On("pageerror", func(err error) { br.console = append(br.console, "pageerror: "+err.Error()) })
+	return br
+}
+
+// until polls a JS predicate.
+func (b *browser) until(t *testing.T, what, js string, d time.Duration) {
+	t.Helper()
+	t0 := time.Now()
+	for {
+		v, err := b.page.Evaluate(js)
+		if err == nil && v == true {
+			return
+		}
+		if time.Since(t0) > d {
+			st, _ := b.page.Locator("#status").TextContent()
+			t.Fatalf("%s: not after %s; status %q; console %q", what, d, st, b.console)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+func (b *browser) open(t *testing.T) {
+	t.Helper()
+	if _, err := b.page.Goto(baseURL(t)); err != nil {
+		t.Fatal(err)
+	}
+	b.until(t, "engine ready", `() => !!(window.__fsplay && window.__fsplay.ready)`, 60*time.Second)
+}
+
+func text(t *testing.T, l playwright.Locator) string {
+	t.Helper()
+	s, err := l.TextContent()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+func TestSample(t *testing.T) {
+	b := launch(t)
+	b.open(t)
+	p := b.page
+	if err := p.Locator("#sample").Click(); err != nil {
+		t.Fatal(err)
+	}
+	b.until(t, "sample opened", `() => document.getElementById("fstype").textContent === "fat32"`, 30*time.Second)
+	if got := text(t, p.Locator("#fslabel")); got != "PLAYGROUND" {
+		t.Fatalf("label %q", got)
+	}
+	tree := text(t, p.Locator("#tree"))
+	for _, want := range []string{"README.TXT", "docs", "images", "empty"} {
+		if !strings.Contains(tree, want) {
+			t.Fatalf("tree %q lacks %q", tree, want)
+		}
+	}
+
+	// View a text file.
+	if err := p.Locator("button.file", playwright.PageLocatorOptions{HasText: "README.TXT"}).Click(); err != nil {
+		t.Fatal(err)
+	}
+	b.until(t, "README shown", `() => (document.querySelector("#view pre.text")||{}).textContent?.includes("formatted in your browser")`, 15*time.Second)
+
+	// Open a directory, view an image.
+	if err := p.Locator("summary", playwright.PageLocatorOptions{HasText: "images"}).Click(); err != nil {
+		t.Fatal(err)
+	}
+	b.until(t, "images listed", `() => document.getElementById("tree").textContent.includes("gradient.png")`, 15*time.Second)
+	if err := p.Locator("button.file", playwright.PageLocatorOptions{HasText: "gradient.png"}).Click(); err != nil {
+		t.Fatal(err)
+	}
+	b.until(t, "image decoded", `() => { const i = document.querySelector("#view img"); return !!i && i.complete && i.naturalWidth === 96 }`, 15*time.Second)
+
+	// Download a file through the page.
+	if err := p.Locator("summary", playwright.PageLocatorOptions{HasText: "docs"}).Click(); err != nil {
+		t.Fatal(err)
+	}
+	b.until(t, "docs listed", `() => document.getElementById("tree").textContent.includes("lines.txt")`, 15*time.Second)
+	dl, err := p.ExpectDownload(func() error {
+		return p.Locator(`button.dl[aria-label="download lines.txt"]`).Click()
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dl.SuggestedFilename() != "lines.txt" {
+		t.Fatalf("download name %q", dl.SuggestedFilename())
+	}
+	path, err := dl.Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2000*len("line 0001: the quick brown fox jumps over the lazy dog\n") || !strings.HasPrefix(string(got), "line 0001:") {
+		t.Fatalf("downloaded %d bytes", len(got))
+	}
+	for _, c := range b.console {
+		if strings.HasPrefix(c, "pageerror") {
+			t.Fatalf("page error: %s", c)
+		}
+	}
+	shot(t, p, "sample")
+}
+
+// shot writes a screenshot to E2E_SHOTS, a directory that must lie outside
+// every git work tree: a capture never belongs in a repository.
+func shot(t *testing.T, p playwright.Page, name string) {
+	dir := os.Getenv("E2E_SHOTS")
+	if dir == "" {
+		return
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for d := abs; ; d = filepath.Dir(d) {
+		if _, err := os.Stat(filepath.Join(d, ".git")); err == nil {
+			t.Fatalf("E2E_SHOTS %s is inside the git work tree %s", abs, d)
+		}
+		if filepath.Dir(d) == d {
+			break
+		}
+	}
+	for _, w := range []int{1280, 390} {
+		p.SetViewportSize(w, 900)
+		out := filepath.Join(abs, fmt.Sprintf("%s-%d.png", name, w))
+		if _, err := p.Screenshot(playwright.PageScreenshotOptions{Path: playwright.String(out), FullPage: playwright.Bool(true)}); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("screenshot: %s", out)
+	}
+}
+
+// TestHostileNames opens an ext4 image whose file names are HTML. They must
+// appear as text, and nothing in them may run.
+func TestHostileNames(t *testing.T) {
+	img := filepath.Join(t.TempDir(), "hostile.img")
+	fsys, err := filesystem_ext4.Format(img, 16<<20, filesystem_ext4.FormatConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	evil := `<img src=x onerror="window.__pwned=1">.txt`
+	if err := fsys.WriteFile("/"+evil, []byte("boo"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := fsys.WriteFile("/..hidden", []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fsys.Close()
+
+	b := launch(t)
+	b.open(t)
+	p := b.page
+	if err := p.Locator("#pick").SetInputFiles(img); err != nil {
+		t.Fatal(err)
+	}
+	b.until(t, "ext4 opened", `() => document.getElementById("fstype").textContent === "ext4"`, 30*time.Second)
+	b.until(t, "names listed", `() => document.getElementById("tree").textContent.includes("onerror")`, 15*time.Second)
+	if v, _ := p.Evaluate(`() => window.__pwned === undefined && document.querySelectorAll("#tree img").length === 0`); v != true {
+		t.Fatal("a file name was parsed as HTML")
+	}
+	if v, _ := p.Evaluate(`() => [window.__fsplay.safeName("..hidden"), window.__fsplay.safeName("a/b\\c:d"), window.__fsplay.safeName("")]`); fmt.Sprint(v) != "[hidden a_b_c_d file]" {
+		t.Fatalf("safeName: %v", v)
+	}
+}
+
+func TestUnknownImage(t *testing.T) {
+	junk := filepath.Join(t.TempDir(), "junk.bin")
+	os.WriteFile(junk, make([]byte, 1<<20), 0o644)
+	b := launch(t)
+	b.open(t)
+	if err := b.page.Locator("#pick").SetInputFiles(junk); err != nil {
+		t.Fatal(err)
+	}
+	b.until(t, "refusal shown", `() => document.getElementById("status").classList.contains("error")`, 30*time.Second)
+	if st := text(t, b.page.Locator("#status")); !strings.Contains(st, "unknown filesystem") {
+		t.Fatalf("status %q", st)
+	}
+}
+
+// Measurement is one open of an image.
+type Measurement struct {
+	Cache        bool    `json:"cache"`
+	OpenEngineMs float64 `json:"openEngineMs"`
+	OpenTotalMs  float64 `json:"openEndToEndMs"`
+	ListRootMs   float64 `json:"listRootMs"`
+	BackendReads float64 `json:"backendReads"`
+	BackendBytes float64 `json:"backendBytes"`
+}
+
+// TestMeasureCache opens E2E_IMAGE (or a generated ext4 image) with and
+// without the block cache, in interleaved rounds, and reports the medians.
+func TestMeasureCache(t *testing.T) {
+	img := os.Getenv("E2E_IMAGE")
+	if img == "" {
+		img = filepath.Join(t.TempDir(), "gen.img")
+		fsys, err := filesystem_ext4.Format(img, 64<<20, filesystem_ext4.FormatConfig{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := 0; i < 300; i++ {
+			fsys.WriteFile(fmt.Sprintf("/file-%03d.txt", i), []byte(strings.Repeat("x", i*10)), 0o644)
+		}
+		fsys.Close()
+	}
+	rounds := 5
+	b := launch(t)
+	byMode := map[bool][]Measurement{}
+	for r := 0; r < rounds; r++ {
+		for _, cache := range []bool{r%2 == 0, r%2 != 0} {
+			b.open(t)
+			if err := b.page.Locator("#cache").SetChecked(cache); err != nil {
+				t.Fatal(err)
+			}
+			if err := b.page.Locator("#pick").SetInputFiles(img); err != nil {
+				t.Fatal(err)
+			}
+			b.until(t, "opened", `() => !!(window.__fsplay.timings.listRoot >= 0 && window.__fsplay.info)`, 120*time.Second)
+			v, err := b.page.Evaluate(`async () => {
+				const t = window.__fsplay.timings;
+				const s = (await window.__fsplay.req({op: "stats"})).stats;
+				return {openEngineMs: t.open.engineMs, openEndToEndMs: t.open.endToEndMs, listRootMs: t.listRoot,
+					backendReads: s.backendReads, backendBytes: s.backendBytes};
+			}`)
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw, _ := json.Marshal(v)
+			var m Measurement
+			json.Unmarshal(raw, &m)
+			m.Cache = cache
+			byMode[cache] = append(byMode[cache], m)
+		}
+	}
+	median := func(ms []Measurement, f func(Measurement) float64) float64 {
+		v := make([]float64, len(ms))
+		for i, m := range ms {
+			v[i] = f(m)
+		}
+		sort.Float64s(v)
+		return v[len(v)/2]
+	}
+	report := map[string]any{"image": filepath.Base(img), "rounds": rounds}
+	for _, cache := range []bool{true, false} {
+		ms := byMode[cache]
+		key := map[bool]string{true: "cache", false: "nocache"}[cache]
+		report[key] = map[string]float64{
+			"openEngineMs":   median(ms, func(m Measurement) float64 { return m.OpenEngineMs }),
+			"openEndToEndMs": median(ms, func(m Measurement) float64 { return m.OpenTotalMs }),
+			"listRootMs":     median(ms, func(m Measurement) float64 { return m.ListRootMs }),
+			"backendReads":   median(ms, func(m Measurement) float64 { return m.BackendReads }),
+			"backendBytes":   median(ms, func(m Measurement) float64 { return m.BackendBytes }),
+		}
+	}
+	out, _ := json.MarshalIndent(report, "", "  ")
+	t.Logf("measurements:\n%s", out)
+	if f := os.Getenv("E2E_REPORT"); f != "" {
+		os.WriteFile(f, out, 0o644)
+	}
+	_ = io.Discard
+}

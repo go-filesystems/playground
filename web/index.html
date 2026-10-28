@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self'; img-src 'self' blob:; style-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>go-filesystems playground</title>
+<meta name="description" content="Drop a disk image: see which filesystem it is, browse it, view and download its files. Runs in your browser; nothing is uploaded.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>go-filesystems playground</h1>
+  <p class="lede">Drop a disk image. The page says which filesystem it is and lets you browse it, view small files and download any file.
+  Everything runs in your browser, in WebAssembly: <strong>nothing is uploaded</strong>.</p>
+</header>
+<main>
+  <section id="drop" class="drop" tabindex="0" aria-label="Drop a disk image here">
+    <p><strong>Drop an image here</strong> or
+      <label class="button" for="pick">choose a file</label>
+      <input id="pick" type="file" hidden>
+      or <button id="sample" type="button">make a sample FAT32 image</button></p>
+    <p class="hint">Opens FAT32, exFAT, ext4, NTFS, ISO 9660, SquashFS, HFS+ and UFS filesystem images (a filesystem at offset 0; not a partitioned disk).
+      <label class="opt"><input id="cache" type="checkbox" checked> block cache</label></p>
+  </section>
+  <p id="status" role="status" aria-live="polite">Loading the engine…</p>
+  <section id="volume" hidden>
+    <dl class="facts">
+      <div><dt>Filesystem</dt><dd id="fstype"></dd></div>
+      <div><dt>Image</dt><dd id="fsname"></dd></div>
+      <div><dt>Size</dt><dd id="fssize"></dd></div>
+      <div><dt>Label</dt><dd id="fslabel"></dd></div>
+      <div><dt>Opened in</dt><dd id="fsopen"></dd></div>
+      <div id="samplerow" hidden><dt>Sample</dt><dd><button id="sampledl" type="button">download the sample image</button></dd></div>
+    </dl>
+    <div class="panes">
+      <nav id="tree" aria-label="Directory tree"></nav>
+      <article id="view" aria-live="polite">
+        <p class="hint">Select a file to view it. Text up to 1 MiB and images up to 8 MiB are shown here; any file can be downloaded.</p>
+      </article>
+    </div>
+  </section>
+</main>
+<footer>
+  <p>Built on <a href="https://github.com/go-filesystems">go-filesystems</a> (pure Go drivers, <code>detect</code>) ·
+  <a href="https://github.com/go-filesystems/playground">source</a></p>
+</footer>
+<script src="app.js"></script>
+</body>
+</html>
