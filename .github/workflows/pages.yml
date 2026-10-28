@@ -1,0 +1,81 @@
+name: pages
+
+# Builds the playground (the page, the engine in WebAssembly, wasm_exec.js)
+# and publishes it at https://go-filesystems.github.io/playground/, then
+# waits until the CDN serves exactly this build's files and uses the live
+# page in Chromium.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with: { go-version: '1.27.3' }
+      - name: build the site (outside the checkout)
+        run: go run ./cmd/site build --out "$RUNNER_TEMP/_site" && ls -la "$RUNNER_TEMP/_site"
+      - uses: actions/upload-pages-artifact@v5
+        with: { path: "${{ runner.temp }}/_site" }
+      - uses: actions/upload-artifact@v7
+        with: { name: build-manifest, path: "${{ runner.temp }}/_site/build.json" }
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v5
+
+  verify:
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with: { go-version: '1.27.3' }
+      - uses: actions/download-artifact@v8
+        with: { name: build-manifest, path: manifest }
+      - name: the live site serves this build, byte for byte
+        run: |
+          set -o pipefail
+          go run ./cmd/site verify --url https://go-filesystems.github.io/playground/ --manifest manifest/build.json --timeout 25m | tee -a "$GITHUB_STEP_SUMMARY"
+
+  live:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with: { go-version: '1.27.3' }
+      - uses: actions/setup-node@v7
+        with: { node-version: 22 }
+      - name: Playwright driver and Chromium
+        run: |
+          echo "PLAYWRIGHT_DRIVER_PATH=$RUNNER_TEMP/pwdriver" >> "$GITHUB_ENV"
+          echo "PLAYWRIGHT_NODEJS_PATH=$(command -v node)" >> "$GITHUB_ENV"
+          go run ./cmd/site playwright-driver --dir "$RUNNER_TEMP/pwdriver"
+          PLAYWRIGHT_DRIVER_PATH="$RUNNER_TEMP/pwdriver" PLAYWRIGHT_NODEJS_PATH="$(command -v node)" \
+            go run github.com/playwright-community/playwright-go/cmd/playwright install --with-deps chromium
+      - name: the live page, used
+        env:
+          E2E_URL: https://go-filesystems.github.io/playground/
+        run: go test -tags e2e -count=1 -v -run 'TestSample|TestHostileNames|TestUnknownImage' -timeout 15m ./e2e/ > "$RUNNER_TEMP/live.log" 2>&1; status=$?; tail -30 "$RUNNER_TEMP/live.log"; exit $status

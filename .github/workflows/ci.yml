@@ -1,0 +1,92 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (native, race, coverage)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with: { go-version: '1.27.3' }
+      - run: go version
+      - name: gofmt
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then echo "::error::not gofmt-ed:"; echo "$out"; exit 1; fi
+      - run: go vet ./...
+      - run: go vet -tags e2e ./e2e/
+      - run: GOOS=js GOARCH=wasm go vet ./cmd/worker ./internal/core
+      - name: go test -race, with coverage
+        run: |
+          go test -race -count=1 -coverprofile=cov.out ./...
+          go tool cover -func=cov.out > cov.txt
+          tail -1 cov.txt
+          echo "### Coverage: $(tail -1 cov.txt | tr -s '\t ' ' ')" >> "$GITHUB_STEP_SUMMARY"
+      - name: the engine builds for the browser
+        run: go run ./cmd/site build --out "$RUNNER_TEMP/_site" && ls -la "$RUNNER_TEMP/_site"
+
+  fuzz:
+    name: fuzz smoke ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Requests posted to the worker.
+          - { target: FuzzHandle, pkg: ./internal/core }
+          # A damaged image, browsed as the page does.
+          - { target: FuzzImage, pkg: ./internal/core }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with: { go-version: '1.27.3' }
+      - run: go test -run '^$' -fuzz '^${{ matrix.target }}$' -fuzztime 45s ${{ matrix.pkg }}
+
+  vulns:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with: { go-version: '1.27.3' }
+      - name: govulncheck (native and js/wasm)
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          "$(go env GOPATH)/bin/govulncheck" ./...
+          GOOS=js GOARCH=wasm "$(go env GOPATH)/bin/govulncheck" ./cmd/worker
+
+  e2e:
+    name: browser (headless Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with: { go-version: '1.27.3' }
+      # Node 26 hangs after unpacking a browser; 22 does not.
+      - uses: actions/setup-node@v7
+        with: { node-version: 22 }
+      - name: Playwright driver and Chromium
+        run: |
+          echo "PLAYWRIGHT_DRIVER_PATH=$RUNNER_TEMP/pwdriver" >> "$GITHUB_ENV"
+          echo "PLAYWRIGHT_NODEJS_PATH=$(command -v node)" >> "$GITHUB_ENV"
+          go run ./cmd/site playwright-driver --dir "$RUNNER_TEMP/pwdriver"
+          PLAYWRIGHT_DRIVER_PATH="$RUNNER_TEMP/pwdriver" PLAYWRIGHT_NODEJS_PATH="$(command -v node)" \
+            go run github.com/playwright-community/playwright-go/cmd/playwright install --with-deps chromium
+      - name: go test -tags e2e
+        env:
+          E2E_REPORT: ${{ runner.temp }}/measure.json
+        run: go test -tags e2e -count=1 -v -timeout 15m ./e2e/ > "$RUNNER_TEMP/e2e.log" 2>&1; status=$?; tail -60 "$RUNNER_TEMP/e2e.log"; exit $status
+      - name: measurements
+        if: always()
+        run: |
+          { echo '### Open and list, block cache on and off (generated ext4 image)'; echo '```json'; cat "$RUNNER_TEMP/measure.json" 2>/dev/null || echo none; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
