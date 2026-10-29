@@ -26,9 +26,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-fde/luks"
 	filesystem_btrfs "github.com/go-filesystems/btrfs"
 	filesystem_ext4 "github.com/go-filesystems/ext4"
-	"github.com/go-fde/luks"
 	"github.com/playwright-community/playwright-go"
 
 	"github.com/go-filesystems/playground/internal/site"
