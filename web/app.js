@@ -154,6 +154,7 @@
     state.info = info;
     state.name = name;
     $("fstype").textContent = info.type;
+    $("fstype").title = info.forced ? "chosen in the Filesystem list" : "detected";
     $("fsname").textContent = name;
     $("fssize").textContent = human(info.size);
     $("fslabel").textContent = info.label || "(none)";
@@ -175,7 +176,7 @@
     status(`Opening ${file.name} (${human(file.size)})…`);
     const t0 = performance.now();
     try {
-      const r = await call({ kind: "open", file, cache: $("cache").checked });
+      const r = await call({ kind: "open", file, cache: $("cache").checked, fstype: $("kind").value });
       const ms = performance.now() - t0;
       state.timings.open = { engineMs: r.info.openMs, endToEndMs: ms };
       const t1 = performance.now();

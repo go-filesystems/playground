@@ -21,8 +21,25 @@
       <label class="button" for="pick">choose a file</label>
       <input id="pick" type="file" hidden>
       or <button id="sample" type="button">make a sample FAT32 image</button></p>
-    <p class="hint">Opens FAT32, exFAT, ext4, NTFS, ISO 9660, SquashFS, HFS+ and UFS filesystem images (a filesystem at offset 0; not a partitioned disk).
+    <p class="hint">
+      <label class="opt">Filesystem
+        <select id="kind">
+          <option value="auto" selected>detect it</option>
+          <option value="fat32">FAT32</option>
+          <option value="exfat">exFAT</option>
+          <option value="ext4">ext4</option>
+          <option value="ntfs">NTFS</option>
+          <option value="iso9660">ISO 9660</option>
+          <option value="squashfs">SquashFS</option>
+          <option value="hfsplus">HFS+</option>
+          <option value="ufs">UFS</option>
+          <option value="apfs">APFS (disk image)</option>
+          <option value="btrfs">Btrfs (disk image)</option>
+          <option value="xfs">XFS (disk image)</option>
+          <option value="zfs">ZFS (disk image)</option>
+        </select></label>
       <label class="opt"><input id="cache" type="checkbox" checked> block cache</label></p>
+    <p class="hint">Detected: FAT32, exFAT, ext4, NTFS, ISO 9660, SquashFS, HFS+ and UFS at offset 0. APFS, Btrfs, XFS and ZFS are found in a disk image's partition table, or tried in turn when nothing is detected; choose one to force it.</p>
   </section>
   <p id="status" role="status" aria-live="polite">Loading the engine…</p>
   <section id="volume" hidden>

@@ -8,7 +8,7 @@
 //
 // It exposes globalThis.fsplay:
 //
-//	open(file: File, cache: boolean) -> string                (JSON Response)
+//	open(file: File, cache: boolean, kind: string) -> string  (JSON Response; kind is one of core.Kinds)
 //	request(json: string)            -> [string, Uint8Array|null]
 package main
 
@@ -67,10 +67,14 @@ func main() {
 		if len(args) > 1 {
 			s.SetCache(args[1].Truthy())
 		}
+		kind := "auto"
+		if len(args) > 2 && args[2].Type() == js.TypeString {
+			kind = args[2].String()
+		}
 		file := args[0]
 		size := int64(file.Get("size").Float())
 		r := &fileReaderAt{file: file, frs: frsCtor.New(), u8: u8, size: size}
-		info, err := s.Open(r, size)
+		info, err := s.OpenAs(r, size, kind)
 		return string(core.OpenResponse(info, err, float64(time.Since(t0).Microseconds())/1000))
 	})
 	request := js.FuncOf(func(this js.Value, args []js.Value) any {

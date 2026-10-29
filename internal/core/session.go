@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -31,20 +32,26 @@ import (
 
 var registerOnce sync.Once
 
-// registerDrivers wires the drivers that open a filesystem at offset zero of
-// an io.ReaderAt -- the same eight, the same way, as go-fileshare/fileshare's
-// registerDrivers. apfs, btrfs, xfs and zfs open a partition of a disk image
-// by path, a different shape that detect.Register does not take.
+// readers are the drivers that open a filesystem at offset zero of an
+// io.ReaderAt -- the same eight, the same way, as go-fileshare/fileshare's
+// registerDrivers. apfs, btrfs, xfs and zfs open a partition of a disk
+// image through a block device instead (devices.go).
+var readers = map[detect.Type]detect.Opener{
+	detect.FAT32:    filesystem_fat32.OpenReader,
+	detect.ExFAT:    filesystem_exfat.OpenReader,
+	detect.Ext4:     filesystem_ext4.OpenReader,
+	detect.NTFS:     filesystem_ntfs.OpenReader,
+	detect.ISO9660:  filesystem_iso9660.OpenReader,
+	detect.SquashFS: filesystem_squashfs.OpenReader,
+	detect.HFSPlus:  hfsplus.OpenReader,
+	detect.UFS:      filesystem_ufs.OpenReader,
+}
+
 func registerDrivers() {
 	registerOnce.Do(func() {
-		detect.Register(detect.FAT32, filesystem_fat32.OpenReader)
-		detect.Register(detect.ExFAT, filesystem_exfat.OpenReader)
-		detect.Register(detect.Ext4, filesystem_ext4.OpenReader)
-		detect.Register(detect.NTFS, filesystem_ntfs.OpenReader)
-		detect.Register(detect.ISO9660, filesystem_iso9660.OpenReader)
-		detect.Register(detect.SquashFS, filesystem_squashfs.OpenReader)
-		detect.Register(detect.HFSPlus, hfsplus.OpenReader)
-		detect.Register(detect.UFS, filesystem_ufs.OpenReader)
+		for t, o := range readers {
+			detect.Register(t, o)
+		}
 	})
 }
 
@@ -93,6 +100,8 @@ type Info struct {
 	Partial bool    `json:"partialReads"` // the driver reads byte ranges (filesystem.Opener)
 	Cached  bool    `json:"cached"`
 	OpenMs  float64 `json:"openMs"`
+	// Forced is a type the person chose rather than detect's answer.
+	Forced bool `json:"forced"`
 }
 
 // Entry is one directory entry.
@@ -142,7 +151,15 @@ func NewSession(lim Limits) *Session {
 
 // Open detects and opens the image r of size bytes, closing any image
 // opened before.
-func (s *Session) Open(r io.ReaderAt, size int64) (Info, error) {
+func (s *Session) Open(r io.ReaderAt, size int64) (Info, error) { return s.OpenAs(r, size, "auto") }
+
+// OpenAs opens the image r as kind, one of Kinds: "auto" detects it (and,
+// when detect finds nothing at offset zero, tries the disk-image drivers
+// in turn); any other kind forces that driver.
+func (s *Session) OpenAs(r io.ReaderAt, size int64, kind string) (Info, error) {
+	if !slices.Contains(Kinds, kind) {
+		return Info{}, fmt.Errorf("%w: %q", ErrUnknownKind, kind)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.closeLocked()
@@ -156,7 +173,7 @@ func (s *Session) Open(r io.ReaderAt, size int64) (Info, error) {
 		s.cache = NewBlockCache(s.counter, size, s.lim.BlockSize, s.lim.MaxBlocks)
 		src = s.cache
 	}
-	fsys, t, err := openGuarded(src, size)
+	fsys, t, err := openGuarded(src, size, kind)
 	if err != nil {
 		if t != "" && t != detect.Unknown {
 			return Info{Type: string(t), Size: size}, fmt.Errorf("%s: %w", t, err)
@@ -165,7 +182,7 @@ func (s *Session) Open(r io.ReaderAt, size int64) (Info, error) {
 	}
 	s.fs = fsys
 	_, partial := fsys.(filesystem.Opener)
-	s.info = Info{Type: string(t), Size: size, Partial: partial, Cached: s.cache != nil}
+	s.info = Info{Type: string(t), Size: size, Partial: partial, Cached: s.cache != nil, Forced: kind != "auto"}
 	if l, ok := fsys.(filesystem.LabelReader); ok {
 		s.info.Label = strings.TrimSpace(safeCall(l.Label))
 	}
@@ -173,15 +190,54 @@ func (s *Session) Open(r io.ReaderAt, size int64) (Info, error) {
 	return s.info, nil
 }
 
-// openGuarded is detect.Open with a driver panic turned into an error: the
+// deviceKinds are tried, in this order, when detect finds nothing.
+var deviceKinds = []string{"apfs", "btrfs", "xfs", "zfs"}
+
+// openGuarded opens r as kind with a driver panic turned into an error: the
 // image is untrusted and one bad structure must not take the worker down.
-func openGuarded(r io.ReaderAt, size int64) (fsys filesystem.Filesystem, t detect.Type, err error) {
+func openGuarded(r io.ReaderAt, size int64, kind string) (filesystem.Filesystem, detect.Type, error) {
+	switch {
+	case kind == "auto":
+		fsys, t, err := guarded(func() (filesystem.Filesystem, detect.Type, error) { return detect.Open(r, size) })
+		if err == nil {
+			return fsys, t, nil
+		}
+		if slices.Contains(deviceKinds, string(t)) {
+			// detect knows the superblock; the driver takes a block device.
+			return openGuarded(r, size, string(t))
+		}
+		if t != "" && t != detect.Unknown {
+			return nil, t, err
+		}
+		for _, k := range deviceKinds {
+			if fsys, _, derr := openGuarded(r, size, k); derr == nil {
+				return fsys, detect.Type(k), nil
+			}
+		}
+		return nil, t, err
+	case readers[detect.Type(kind)] != nil:
+		return guarded(func() (filesystem.Filesystem, detect.Type, error) {
+			fsys, err := readers[detect.Type(kind)](r, size)
+			return fsys, detect.Type(kind), err
+		})
+	}
+	return guarded(func() (filesystem.Filesystem, detect.Type, error) {
+		fsys, err := openDevice(kind, r, size)
+		return fsys, detect.Type(kind), err
+	})
+}
+
+func guarded(open func() (filesystem.Filesystem, detect.Type, error)) (fsys filesystem.Filesystem, t detect.Type, err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			fsys, err = nil, fmt.Errorf("driver failed on this image: %v", p)
 		}
 	}()
-	return detect.Open(r, size)
+	fsys, t, err = open()
+	if err != nil {
+		fsys = nil // a failed open hands nothing over (and may be a typed nil)
+	}
+	return fsys, t, err
 }
 
 func safeCall(f func() string) (s string) {

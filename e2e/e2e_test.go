@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	filesystem_btrfs "github.com/go-filesystems/btrfs"
 	filesystem_ext4 "github.com/go-filesystems/ext4"
 	"github.com/playwright-community/playwright-go"
 
@@ -257,6 +258,48 @@ func TestHostileNames(t *testing.T) {
 	}
 	if v, _ := p.Evaluate(`() => [window.__fsplay.safeName("..hidden"), window.__fsplay.safeName("a/b\\c:d"), window.__fsplay.safeName("")]`); fmt.Sprint(v) != "[hidden a_b_c_d file]" {
 		t.Fatalf("safeName: %v", v)
+	}
+}
+
+// TestChooseKind opens a Btrfs image -- one of the disk-image drivers
+// detect has no reader for -- by detection, forced as itself, and forced
+// as something it is not.
+func TestChooseKind(t *testing.T) {
+	img := filepath.Join(t.TempDir(), "disk.img")
+	fsys, err := filesystem_btrfs.Format(img, 16<<20, filesystem_btrfs.FormatConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fsys.WriteFile("/hello.txt", []byte("hello btrfs"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fsys.Close()
+
+	b := launch(t)
+	b.open(t)
+	p := b.page
+	pick := func(kind string) {
+		t.Helper()
+		if _, err := p.Locator("#kind").SelectOption(playwright.SelectOptionValues{Values: &[]string{kind}}); err != nil {
+			t.Fatal(err)
+		}
+		p.Evaluate(`() => { document.getElementById("fstype").textContent = ""; document.getElementById("status").classList.remove("error"); }`)
+		if err := p.Locator("#pick").SetInputFiles(img); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pick("auto")
+	b.until(t, "btrfs detected", `() => document.getElementById("fstype").textContent === "btrfs"`, 30*time.Second)
+	b.until(t, "file listed", `() => document.getElementById("tree").textContent.includes("hello.txt")`, 15*time.Second)
+	if v, _ := p.Evaluate(`() => document.getElementById("fstype").title`); v != "detected" {
+		t.Fatalf("title %v", v)
+	}
+	pick("ext4")
+	b.until(t, "refused as ext4", `() => document.getElementById("status").classList.contains("error")`, 30*time.Second)
+	pick("btrfs")
+	b.until(t, "forced btrfs", `() => document.getElementById("fstype").textContent === "btrfs"`, 30*time.Second)
+	if v, _ := p.Evaluate(`() => document.getElementById("fstype").title`); v != "chosen in the Filesystem list" {
+		t.Fatalf("title %v", v)
 	}
 }
 
