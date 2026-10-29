@@ -74,6 +74,17 @@ button, .button {
 }
 button:focus-visible, .button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
 
+.explorer { margin: 0 0 1rem; }
+.explorer[hidden] { display: none; }
+.explorer iframe {
+  display: block;
+  width: 100%;
+  height: min(70vh, 640px);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
 .unlock { margin: 0.75rem 0 0; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
 .unlock[hidden] { display: none; }
 .unlock .hint { flex-basis: 100%; margin: 0; }

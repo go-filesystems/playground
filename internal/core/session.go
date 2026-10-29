@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"path"
 	"slices"
 	"sort"
@@ -139,6 +140,7 @@ type Session struct {
 	info    Info
 	counter *Counter
 	cache   *BlockCache
+	dav     http.Handler // the open image's WebDAV, made on first use
 
 	// The last whole file read from a driver without Opener, so streaming
 	// it in chunks does not read it again per chunk.
@@ -279,7 +281,7 @@ func (s *Session) closeLocked() {
 	if s.fs != nil {
 		s.fs.Close()
 	}
-	s.fs, s.info, s.counter, s.cache, s.whole, s.wholePath = nil, Info{}, nil, nil, nil, ""
+	s.fs, s.info, s.counter, s.cache, s.whole, s.wholePath, s.dav = nil, Info{}, nil, nil, nil, "", nil
 }
 
 // cleanPath validates a path from the page: absolute, no NUL, bounded.

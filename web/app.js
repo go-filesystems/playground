@@ -16,7 +16,7 @@
   };
 
   // Exposed for the end-to-end test and for anyone curious in a console.
-  const state = { ready: false, info: null, name: "", lastList: null, timings: {}, error: "" };
+  const state = { ready: false, info: null, name: "", lastList: null, timings: {}, error: "", dav: [] };
   window.__fsplay = state;
 
   let worker = null;
@@ -152,6 +152,7 @@
   // ---- opening ------------------------------------------------------------
 
   function showVolume(info, name, ms) {
+    closeExplorer(); // it was browsing the image this one replaces
     state.info = info;
     state.name = name;
     $("fstype").textContent = info.encryption ? `${info.type} in ${info.encryption.toUpperCase()}` : info.type;
@@ -398,6 +399,49 @@
     if (ev.target === drop && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); $("pick").click(); }
   });
   $("pick").addEventListener("change", (ev) => { openFile(ev.target.files[0]); ev.target.value = ""; });
+  // ---- the explorer -------------------------------------------------------
+  //
+  // go-fileshare/explorer runs in a same-origin iframe (explorer.html) and,
+  // finding this bridge on its parent, sends its WebDAV requests here rather
+  // than to a portal. They go to the engine, which answers them with
+  // go-filesystems/webdav over the open image. Nothing leaves the tab.
+
+  window.fileshareExplorerBridge = {
+    get label() { return state.name || "image"; },
+    request(method, path, headers, body) {
+      return call({ kind: "dav", dav: { method, path, headers, body } }).then((r) => {
+        // The last few calls, for the end-to-end test and a curious console.
+        state.dav.push({ method, path, status: r.status });
+        if (state.dav.length > 50) state.dav.shift();
+        return { status: r.status, headers: r.headers || [], body: r.data || new Uint8Array(0) };
+      });
+    },
+    download(path, name) { download(path, { name }); },
+    close() { closeExplorer(); },
+    // What the explorer shows ({status, dir, entries}): it draws on a
+    // canvas, so this is how a test, or a console, can tell.
+    state(json) {
+      try { state.explorer = JSON.parse(json); } catch (_) { /* ignore */ }
+    },
+  };
+
+  function openExplorer() {
+    if (!state.info) return;
+    $("explorerbox").hidden = false;
+    $("explorerframe").src = "explorer.html";
+    $("explorerbox").scrollIntoView({ block: "nearest" });
+  }
+
+  function closeExplorer() {
+    // Unloading the frame frees the explorer's WebAssembly memory.
+    $("explorerframe").src = "about:blank";
+    $("explorerbox").hidden = true;
+  }
+  state.openExplorer = openExplorer;
+
+  $("explore").addEventListener("click", openExplorer);
+  $("explorerclose").addEventListener("click", closeExplorer);
+
   $("unlock").addEventListener("submit", (ev) => {
     ev.preventDefault();
     const input = $("password");
