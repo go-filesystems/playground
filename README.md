@@ -30,12 +30,23 @@ opened by the same eight pure-Go drivers
 | NTFS | [ntfs](https://github.com/go-filesystems/ntfs) | whole file, up to 64 MiB |
 | HFS+ | [hfsplus](https://github.com/go-filesystems/hfsplus) | whole file, up to 64 MiB |
 | UFS | [ufs](https://github.com/go-filesystems/ufs) | whole file, up to 64 MiB |
+| APFS | [apfs](https://github.com/go-filesystems/apfs) | whole file, up to 64 MiB |
+| Btrfs | [btrfs](https://github.com/go-filesystems/btrfs) | whole file, up to 64 MiB |
+| XFS | [xfs](https://github.com/go-filesystems/xfs) | whole file, up to 64 MiB |
+| ZFS | [zfs](https://github.com/go-filesystems/zfs) | whole file, up to 64 MiB |
 
 "Partial reads" means the driver implements `filesystem.Opener`, so viewing or
 downloading streams the file in 4 MiB pieces; the others can only read a file
-whole, which the playground bounds. apfs, btrfs, xfs and zfs open a partition of
-a disk image by path, a shape `detect.Register` does not take, so they are not
-here yet.
+whole, which the playground bounds.
+
+**The Filesystem list** chooses the driver. *Detect it*, the default, asks
+`detect`; when it finds nothing it can open at offset 0, the four disk-image
+drivers -- APFS, Btrfs, XFS, ZFS, which take a block device and find their
+partition in a GPT or MBR table themselves -- are tried in turn. Choosing a
+filesystem forces that driver, for an image `detect` gets wrong or cannot
+recognise. The block device they read is read-only: a driver that tries to
+write gets a permission error. The four add about 1 MB to the compressed
+engine (2.39 → 3.39 MB gzip).
 
 ## How it works
 

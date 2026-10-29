@@ -7,6 +7,7 @@ import (
 	iofs "io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -251,8 +252,62 @@ func TestDriverPanicIsAnError(t *testing.T) {
 	if got := safeCall(func() string { panic("x") }); got != "" {
 		t.Fatalf("safeCall = %q", got)
 	}
-	if _, _, err := openGuarded(panicReader{}, 1<<20); err == nil {
-		t.Fatal("a panicking reader opened")
+	for _, k := range Kinds {
+		if _, _, err := openGuarded(panicReader{}, 1<<20, k); err == nil {
+			t.Fatalf("a panicking reader opened as %s", k)
+		}
+	}
+}
+
+// Every kind the page offers is one OpenAs takes, the page's list is
+// exactly Kinds, and a kind nobody offers is refused.
+func TestFilesystemKinds(t *testing.T) {
+	html, err := os.ReadFile("../../web/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var offered []string
+	for _, m := range regexp.MustCompile(`<option value="([a-z0-9]+)"`).FindAllStringSubmatch(string(html), -1) {
+		offered = append(offered, m[1])
+	}
+	if strings.Join(offered, ",") != strings.Join(Kinds, ",") {
+		t.Fatalf("the page offers %v, the engine takes %v", offered, Kinds)
+	}
+	s := NewSession(DefaultLimits)
+	img, err := Sample()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.OpenAs(bytes.NewReader(img), int64(len(img)), "nope"); !errors.Is(err, ErrUnknownKind) {
+		t.Fatalf("unknown kind: %v", err)
+	}
+	// The sample is FAT32: forced as FAT32 it opens and says so; forced as
+	// ext4 it does not; auto detects it.
+	info, err := s.OpenAs(bytes.NewReader(img), int64(len(img)), "fat32")
+	if err != nil || info.Type != "fat32" || !info.Forced {
+		t.Fatalf("forced fat32: %+v %v", info, err)
+	}
+	for _, k := range []string{"ext4", "apfs", "btrfs", "xfs", "zfs"} {
+		if _, err := s.OpenAs(bytes.NewReader(img), int64(len(img)), k); err == nil {
+			t.Fatalf("a FAT32 image opened as %s", k)
+		}
+	}
+	info, err = s.OpenAs(bytes.NewReader(img), int64(len(img)), "auto")
+	if err != nil || info.Type != "fat32" || info.Forced {
+		t.Fatalf("auto: %+v %v", info, err)
+	}
+	// Nothing detectable: every device driver is tried, and the error is
+	// detect's.
+	if _, err := s.OpenAs(bytes.NewReader(make([]byte, 1<<20)), 1<<20, "auto"); err == nil {
+		t.Fatal("zeros opened")
+	}
+	// The read-only device refuses writes.
+	d := roDevice{r: bytes.NewReader(img), size: int64(len(img))}
+	if _, err := d.WriteAt([]byte{1}, 0); !errors.Is(err, os.ErrPermission) || d.Truncate(0) == nil || d.Sync() != nil || d.Close() != nil {
+		t.Fatal("roDevice")
+	}
+	if n, _ := d.Size(); n != int64(len(img)) {
+		t.Fatal("roDevice size")
 	}
 }
 

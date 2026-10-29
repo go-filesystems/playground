@@ -9,11 +9,11 @@ const ready = WebAssembly.instantiateStreaming(fetch("fsplay.wasm"), go.importOb
   .then((r) => { go.run(r.instance); });
 
 self.onmessage = async (e) => {
-  const { id, kind, file, cache, req } = e.data || {};
+  const { id, kind, file, cache, fstype, req } = e.data || {};
   try {
     await ready;
     if (kind === "open") {
-      const resp = self.fsplay.open(file, !!cache);
+      const resp = self.fsplay.open(file, !!cache, typeof fstype === "string" ? fstype : "auto");
       self.postMessage({ id, resp });
       return;
     }
