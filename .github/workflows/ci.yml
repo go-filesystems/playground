@@ -45,6 +45,8 @@ jobs:
           - { target: FuzzHandle, pkg: ./internal/core }
           # A damaged image, browsed as the page does.
           - { target: FuzzImage, pkg: ./internal/core }
+          # WebDAV requests from the explorer, through the page's bridge.
+          - { target: FuzzDAV, pkg: ./internal/core }
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7

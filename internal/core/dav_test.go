@@ -74,6 +74,47 @@ func TestDAV(t *testing.T) {
 	}
 }
 
+// FuzzDAV sends arbitrary WebDAV requests about the sample, as a page's
+// bridge could: no panic may escape, no answer may pass MaxDAV, and the
+// read-only export must not change the image.
+func FuzzDAV(f *testing.F) {
+	img, err := Sample()
+	if err != nil {
+		f.Fatal(err)
+	}
+	for _, s := range []struct{ method, target, header, body string }{
+		{"PROPFIND", "/", "Depth: 1", propfindSeed},
+		{"PROPFIND", "/docs/", "Depth: infinity", ""},
+		{"GET", "/README.TXT", "Range: bytes=10-5", ""},
+		{"GET", "/%2e%2e/%2e%2e/etc/passwd", "", ""},
+		{"PUT", "/README.TXT", "Content-Range: bytes 0-3/4", "abcd"},
+		{"MOVE", "/README.TXT", "Destination: /x", ""},
+		{"LOCK", "/", "Timeout: Second-1", "<x/>"},
+	} {
+		f.Add(s.method, s.target, s.header, []byte(s.body))
+	}
+	f.Fuzz(func(t *testing.T, method, target, header string, body []byte) {
+		before := bytes.Clone(img)
+		s := NewSession(DefaultLimits)
+		if _, err := s.Open(bytes.NewReader(before), int64(len(before))); err != nil {
+			t.Fatal(err)
+		}
+		var hs [][2]string
+		if k, v, ok := strings.Cut(header, ":"); ok {
+			hs = append(hs, [2]string{strings.TrimSpace(k), strings.TrimSpace(v)})
+		}
+		a, err := s.DAV(method, target, hs, body)
+		if err == nil && len(a.Body) > MaxDAV {
+			t.Fatalf("%d bytes answered", len(a.Body))
+		}
+		if !bytes.Equal(before, img) {
+			t.Fatal("a read-only export changed the image")
+		}
+	})
+}
+
+const propfindSeed = `<?xml version="1.0"?><D:propfind xmlns:D="DAV:"><D:allprop/></D:propfind>`
+
 func TestRecorderBound(t *testing.T) {
 	r := &recorder{h: http.Header{}}
 	if _, err := r.Write(make([]byte, MaxDAV)); err != nil {
