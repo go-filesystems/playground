@@ -48,6 +48,14 @@ recognise. The block device they read is read-only: a driver that tries to
 write gets a permission error. The four add about 1 MB to the compressed
 engine (2.39 → 3.39 MB gzip).
 
+**Encrypted images.** A LUKS1 or LUKS2 container
+([go-fde/luks](https://github.com/go-fde/luks)) is recognised by its header, and
+the page asks for its password. The engine unlocks it and opens the filesystem in
+the payload: detected, or the one chosen in the list. Wrong passwords are refused,
+and the form stays to try again. APFS FileVault containers are not supported yet:
+go-filesystems/apfs cannot read one through its decrypted device so far, and that is
+being fixed there first.
+
 ## How it works
 
 - The Go engine (`cmd/worker`, `GOOS=js GOARCH=wasm`) runs in a **Web Worker**.
@@ -76,6 +84,16 @@ The image is untrusted input.
 - Names from the image reach the DOM through `textContent` only (an end-to-end
   test opens an ext4 image whose file names are HTML); download names are
   sanitised.
+- **A password** goes from the field to the engine for one open. It is not stored
+  and never leaves the tab. The page empties the field on submit, the worker passes
+  it straight on, and the engine clears its byte copy once the container is
+  unlocked or refused. JavaScript and Go strings cannot be wiped, though, so a copy
+  may stay in the tab's memory until it is garbage-collected. Close the tab when
+  done with a sensitive image.
+- **The LUKS header is untrusted** too: it states how much key derivation unlocking
+  costs. The engine refuses a header that asks for more than 2²² PBKDF2 iterations,
+  or for Argon2 beyond 16 passes or 1 GiB (go-fde/luks `OpenFromLimited`), before
+  deriving anything. Within those limits an unlock gets 180 s instead of 30.
 - The page's Content-Security-Policy allows only its own scripts and WebAssembly.
 - Requests to the engine are decoded strictly and fuzzed (`FuzzHandle`), and so is
   browsing a damaged image (`FuzzImage`).

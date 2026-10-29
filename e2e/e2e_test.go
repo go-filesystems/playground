@@ -28,6 +28,7 @@ import (
 
 	filesystem_btrfs "github.com/go-filesystems/btrfs"
 	filesystem_ext4 "github.com/go-filesystems/ext4"
+	"github.com/go-fde/luks"
 	"github.com/playwright-community/playwright-go"
 
 	"github.com/go-filesystems/playground/internal/site"
@@ -300,6 +301,77 @@ func TestChooseKind(t *testing.T) {
 	b.until(t, "forced btrfs", `() => document.getElementById("fstype").textContent === "btrfs"`, 30*time.Second)
 	if v, _ := p.Evaluate(`() => document.getElementById("fstype").title`); v != "chosen in the Filesystem list" {
 		t.Fatalf("title %v", v)
+	}
+}
+
+// fileDevice is a LUKS device's backing file.
+type fileDevice struct{ *os.File }
+
+// TestLUKS opens an ext4 image inside a LUKS1 container: the page asks for
+// the password, refuses a wrong one, opens with the right one, and keeps
+// neither.
+func TestLUKS(t *testing.T) {
+	dir := t.TempDir()
+	inner := filepath.Join(dir, "inner.img")
+	fsys, err := filesystem_ext4.Format(inner, 16<<20, filesystem_ext4.FormatConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fsys.WriteFile("/secret.txt", []byte("inside luks"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fsys.Close()
+	payload, err := os.ReadFile(inner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	img := filepath.Join(dir, "disk.luks")
+	f, err := os.Create(img)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Truncate(1 << 20); err != nil { // room for the header
+		t.Fatal(err)
+	}
+	dev, err := luks.FormatOn(fileDevice{f}, []byte("correct horse"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dev.WriteAt(payload, 0); err != nil {
+		t.Fatal(err)
+	}
+	dev.Close()
+
+	b := launch(t)
+	b.open(t)
+	p := b.page
+	if err := p.Locator("#pick").SetInputFiles(img); err != nil {
+		t.Fatal(err)
+	}
+	b.until(t, "password asked", `() => !document.getElementById("unlock").hidden && document.getElementById("status").textContent.includes("LUKS")`, 30*time.Second)
+
+	submit := func(pw string) {
+		t.Helper()
+		if err := p.Locator("#password").Fill(pw); err != nil {
+			t.Fatal(err)
+		}
+		if err := p.Locator("#unlock button").Click(); err != nil {
+			t.Fatal(err)
+		}
+		if v, _ := p.Evaluate(`() => document.getElementById("password").value`); v != "" {
+			t.Fatalf("the password stayed in the field: %v", v)
+		}
+	}
+	submit("wrong")
+	b.until(t, "wrong password refused", `() => document.getElementById("status").classList.contains("error")`, 60*time.Second)
+	if v, _ := p.Evaluate(`() => document.getElementById("unlock").hidden`); v != false {
+		t.Fatal("the password form went away after a wrong password")
+	}
+	submit("correct horse")
+	b.until(t, "unlocked", `() => document.getElementById("fstype").textContent === "ext4 in LUKS"`, 60*time.Second)
+	b.until(t, "file listed", `() => document.getElementById("tree").textContent.includes("secret.txt")`, 15*time.Second)
+	if v, _ := p.Evaluate(`() => document.getElementById("unlock").hidden`); v != true {
+		t.Fatal("the password form stayed after the unlock")
 	}
 }
 

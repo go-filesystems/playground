@@ -3,6 +3,7 @@ module github.com/go-filesystems/playground
 go 1.27.1
 
 require (
+	github.com/go-fde/luks v0.2.0
 	github.com/go-filesystems/apfs v0.3.0
 	github.com/go-filesystems/btrfs v0.3.0
 	github.com/go-filesystems/detect v0.3.0
@@ -26,9 +27,9 @@ require (
 	github.com/deckarep/golang-set/v2 v2.8.0 // indirect
 	github.com/go-compressions/lzfse v0.4.1 // indirect
 	github.com/go-encryptions/ccm v0.0.0-20260927083542-1713f748107c // indirect
-	github.com/go-encryptions/xts v0.0.0-20260911133109-312298263872 // indirect
+	github.com/go-encryptions/xts v0.0.0-20261012185738-047ae186ad23 // indirect
 	github.com/go-encryptions/zfscrypt v0.0.0-20260927173133-ff7dd33bb415 // indirect
-	github.com/go-fde/apfs v0.0.0-20260912170739-6acb57fc9eb0 // indirect
+	github.com/go-fde/apfs v0.1.0 // indirect
 	github.com/go-jose/go-jose/v3 v3.0.4 // indirect
 	github.com/go-stack/stack v1.8.1 // indirect
 	github.com/go-volumes/gpt v0.3.0 // indirect
@@ -38,6 +39,6 @@ require (
 	github.com/pierrec/lz4/v4 v4.1.33 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/ulikunitz/xz v0.5.17 // indirect
-	golang.org/x/crypto v0.57.0 // indirect
-	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/crypto v0.58.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
 )
