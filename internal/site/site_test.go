@@ -15,10 +15,16 @@ import (
 	"time"
 )
 
-// fakeGo stands in for the go command: it writes the wasm file and answers
-// `go env GOROOT` with a directory holding a wasm_exec.js.
+// fakeGo stands in for the go command: it writes the wasm file, answers
+// `go env GOROOT` with a directory holding a wasm_exec.js, and `go list -m`
+// with a stand-in for the explorer's module, holding its web/.
 func fakeGo(t *testing.T, goroot string, fail string) {
 	t.Helper()
+	explorer := t.TempDir()
+	os.MkdirAll(filepath.Join(explorer, "web"), 0o755)
+	for from := range explorerFiles {
+		os.WriteFile(filepath.Join(explorer, "web", from), []byte(from), 0o644)
+	}
 	old := runGo
 	runGo = func(ctx context.Context, dir string, env []string, stdout io.Writer, args ...string) error {
 		if args[0] == fail {
@@ -33,6 +39,8 @@ func fakeGo(t *testing.T, goroot string, fail string) {
 			}
 		case "env":
 			io.WriteString(stdout, goroot+"\n")
+		case "list":
+			io.WriteString(stdout, explorer+"\n")
 		}
 		return nil
 	}
@@ -51,7 +59,7 @@ func TestBuild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range append(webFiles, "fsplay.wasm", "wasm_exec.js") {
+	for _, f := range append(webFiles, "fsplay.wasm", "wasm_exec.js", "explorer.wasm", "explorer.html", "boot.js", "explorer.css") {
 		if m.Files[f] == "" {
 			t.Fatalf("%s missing from the manifest", f)
 		}

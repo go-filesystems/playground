@@ -11,9 +11,12 @@
 //	open(file: File, cache: boolean, kind: string, password?: string) -> string
 //	    (JSON Response; kind is one of core.Kinds; password unlocks a LUKS image)
 //	request(json: string)            -> [string, Uint8Array|null]
+//	dav(method, path, headers: [name, value][], body: Uint8Array|null)
+//	    -> [string (JSON: ok, status, headers), Uint8Array|null]  (core.Session.DAV)
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"syscall/js"
@@ -96,6 +99,47 @@ func main() {
 		}
 		return []any{string(resp), out}
 	})
-	js.Global().Set("fsplay", js.ValueOf(map[string]any{"open": open, "request": request}))
+	dav := js.FuncOf(func(this js.Value, args []js.Value) any {
+		fail := func(err error) any {
+			b, _ := json.Marshal(map[string]any{"ok": false, "error": err.Error()})
+			return []any{string(b), nil}
+		}
+		if len(args) < 4 || args[0].Type() != js.TypeString || args[1].Type() != js.TypeString {
+			return fail(fmt.Errorf("dav needs a method, a path, headers and a body"))
+		}
+		hs := args[2]
+		var header [][2]string
+		if hs.Type() == js.TypeObject {
+			n := hs.Length()
+			if n > 100 {
+				return fail(core.ErrTooLarge)
+			}
+			for i := 0; i < n; i++ {
+				kv := hs.Index(i)
+				if kv.Type() != js.TypeObject || kv.Length() != 2 {
+					return fail(fmt.Errorf("a header is not a [name, value] pair"))
+				}
+				header = append(header, [2]string{kv.Index(0).String(), kv.Index(1).String()})
+			}
+		}
+		var body []byte
+		if b := args[3]; b.Type() == js.TypeObject {
+			n := b.Get("length").Int()
+			if n > core.MaxDAV {
+				return fail(core.ErrTooLarge)
+			}
+			body = make([]byte, n)
+			js.CopyBytesToGo(body, b)
+		}
+		a, err := s.DAV(args[0].String(), args[1].String(), header, body)
+		if err != nil {
+			return fail(err)
+		}
+		resp, _ := json.Marshal(map[string]any{"ok": true, "status": a.Status, "headers": a.Header})
+		out := u8.New(len(a.Body))
+		js.CopyBytesToJS(out, a.Body)
+		return []any{string(resp), out}
+	})
+	js.Global().Set("fsplay", js.ValueOf(map[string]any{"open": open, "request": request, "dav": dav}))
 	select {}
 }

@@ -56,6 +56,16 @@ and the form stays to try again. APFS FileVault containers are not supported yet
 go-filesystems/apfs cannot read one through its decrypted device so far, and that is
 being fixed there first.
 
+**Open in the explorer.** Once an image is open, *open in the explorer* loads the
+[go-fileshare explorer](https://github.com/go-fileshare/explorer) (v0.4.0 or later)
+in a same-origin iframe. It is fetched only then: 4.1 MB compressed. It browses the
+image the way it browses a fileshare server, over WebDAV. Its requests do not go to
+any network. The page hands them to the engine, which answers them with
+[go-filesystems/webdav](https://github.com/go-filesystems/webdav) over the open
+image, **read-only**. Closing the explorer unloads it. Uploading, renaming and
+deleting are refused for now; writing comes next, through an overlay, with the
+modified image to download.
+
 ## How it works
 
 - The Go engine (`cmd/worker`, `GOOS=js GOARCH=wasm`) runs in a **Web Worker**.
@@ -70,6 +80,12 @@ being fixed there first.
   page turns it off, to compare.
 - The page is plain HTML, CSS and a few KiB of JavaScript. It talks to the worker
   with three coarse requests: open, list a directory, read part of a file.
+- The explorer's WebDAV goes through a **bridge**:
+  1. the explorer finds `fileshareExplorerBridge` on its parent page;
+  2. the page posts each request to the worker;
+  3. `core.Session.DAV` runs it through the WebDAV handler.
+  Every request and answer is bounded at 16 MiB. The WebDAV server adds 0.46 MB to
+  the compressed engine (3.44 → 3.90 MB).
 
 ## Security
 

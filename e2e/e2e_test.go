@@ -375,6 +375,69 @@ func TestLUKS(t *testing.T) {
 	}
 }
 
+// screenshot saves the page as name in E2E_SCREENSHOT_DIR, when set, to look
+// at what the test saw. A directory inside a git work tree is refused: a
+// capture one `git add -A` away from a public repository is how pictures get
+// published by accident.
+func screenshot(t *testing.T, p playwright.Page, name string) {
+	t.Helper()
+	dir := os.Getenv("E2E_SCREENSHOT_DIR")
+	if dir == "" {
+		return
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for d := abs; ; d = filepath.Dir(d) {
+		if _, err := os.Stat(filepath.Join(d, ".git")); err == nil {
+			t.Fatalf("E2E_SCREENSHOT_DIR %s is inside the git work tree %s", abs, d)
+		}
+		if filepath.Dir(d) == d {
+			break
+		}
+	}
+	out := filepath.Join(abs, name)
+	if _, err := p.Screenshot(playwright.PageScreenshotOptions{Path: playwright.String(out), FullPage: playwright.Bool(true)}); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("screenshot: %s", out)
+}
+
+// TestExplorer opens the sample in the go-fileshare explorer: the iframe
+// loads it, it finds the bridge, lists the image's root through the engine's
+// WebDAV, and closing it unloads the frame.
+func TestExplorer(t *testing.T) {
+	b := launch(t)
+	b.open(t)
+	p := b.page
+	if err := p.Locator("#sample").Click(); err != nil {
+		t.Fatal(err)
+	}
+	b.until(t, "sample opened", `() => document.getElementById("fstype").textContent === "fat32"`, 30*time.Second)
+	if err := p.Locator("#explore").Click(); err != nil {
+		t.Fatal(err)
+	}
+	b.until(t, "explorer started", `() => {
+		const d = document.getElementById("explorerframe").contentDocument;
+		return !!d && !!d.getElementById("screen") && d.getElementById("screen").style.display === "block";
+	}`, 120*time.Second)
+	b.until(t, "root listed over the bridge", `() => window.__fsplay.dav.some((c) => c.method === "PROPFIND" && c.path === "/" && c.status === 207)`, 60*time.Second)
+	// What the explorer shows, not only what the engine answered: a listing
+	// the explorer could not read was answered 207 all the same.
+	b.until(t, "the explorer lists the root", `() => {
+		const s = window.__fsplay.explorer;
+		return !!s && s.dir === "/" && (s.entries || []).includes("README.TXT") && s.status === "";
+	}`, 60*time.Second)
+	screenshot(t, p, "explorer.png")
+	if err := p.Locator("#explorerclose").Click(); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := p.Evaluate(`() => document.getElementById("explorerbox").hidden && document.getElementById("explorerframe").getAttribute("src") === "about:blank"`); v != true {
+		t.Fatal("closing did not unload the explorer")
+	}
+}
+
 func TestUnknownImage(t *testing.T) {
 	junk := filepath.Join(t.TempDir(), "junk.bin")
 	os.WriteFile(junk, make([]byte, 1<<20), 0o644)

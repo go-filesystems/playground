@@ -9,7 +9,7 @@ const ready = WebAssembly.instantiateStreaming(fetch("fsplay.wasm"), go.importOb
   .then((r) => { go.run(r.instance); });
 
 self.onmessage = async (e) => {
-  const { id, kind, file, cache, fstype, password, req } = e.data || {};
+  const { id, kind, file, cache, fstype, password, req, dav } = e.data || {};
   try {
     await ready;
     if (kind === "open") {
@@ -20,7 +20,10 @@ self.onmessage = async (e) => {
       self.postMessage({ id, resp });
       return;
     }
-    const [resp, data] = self.fsplay.request(String(req));
+    const [resp, data] = kind === "dav"
+      ? self.fsplay.dav(String(dav.method), String(dav.path), Array.isArray(dav.headers) ? dav.headers : [],
+        dav.body instanceof Uint8Array ? dav.body : null)
+      : self.fsplay.request(String(req));
     if (data) {
       self.postMessage({ id, resp, data }, [data.buffer]);
     } else {

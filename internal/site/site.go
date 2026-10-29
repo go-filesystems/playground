@@ -89,6 +89,9 @@ func Build(ctx context.Context, o Options) (*Manifest, error) {
 			return nil, err
 		}
 	}
+	if err := buildExplorer(ctx, o, log); err != nil {
+		return nil, err
+	}
 	m, err := manifestOf(o.Out)
 	if err != nil {
 		return nil, err
@@ -99,6 +102,37 @@ func Build(ctx context.Context, o Options) (*Manifest, error) {
 	}
 	fmt.Fprintf(log, "site: %d files in %s (build %s)\n", len(m.Files), o.Out, m.Build)
 	return m, nil
+}
+
+// explorerModule is the file explorer the page opens on demand, at the
+// version go.mod's tool directive pins.
+const explorerModule = "github.com/go-fileshare/explorer"
+
+// explorerFiles are the explorer's page files, from its module's web/: its
+// page becomes explorer.html beside the playground's; wasm_exec.js is shared,
+// the same toolchain building both.
+var explorerFiles = map[string]string{"index.html": "explorer.html", "boot.js": "boot.js", "explorer.css": "explorer.css"}
+
+func buildExplorer(ctx context.Context, o Options, log io.Writer) error {
+	fmt.Fprintln(log, "site: building the explorer (GOOS=js GOARCH=wasm)")
+	wasm, err := filepath.Abs(filepath.Join(o.Out, "explorer.wasm"))
+	if err != nil {
+		return err
+	}
+	if err := runGo(ctx, o.Root, []string{"GOOS=js", "GOARCH=wasm", "GOWORK=off", "CGO_ENABLED=0"}, io.Discard,
+		"build", "-trimpath", "-ldflags=-s -w", "-o", wasm, explorerModule); err != nil {
+		return err
+	}
+	var dir bytes.Buffer
+	if err := runGo(ctx, o.Root, []string{"GOWORK=off"}, &dir, "list", "-m", "-f", "{{.Dir}}", explorerModule); err != nil {
+		return err
+	}
+	for from, to := range explorerFiles {
+		if err := copyFile(filepath.Join(strings.TrimSpace(dir.String()), "web", from), filepath.Join(o.Out, to)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func copyFile(from, to string) error {
