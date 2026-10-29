@@ -9,6 +9,7 @@
   const IMG_MAX = 8 << 20;       // view images up to 8 MiB
   const CHUNK = 4 << 20;         // the worker's largest read
   const TIMEOUT = 30000;         // per request: a corrupt image must not hang the page
+  const UNLOCK_TIMEOUT = 180000; // an open with a password: the key derivation
   const IMAGE_TYPES = {
     png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
     webp: "image/webp", bmp: "image/bmp", ico: "image/x-icon", avif: "image/avif",
@@ -153,7 +154,7 @@
   function showVolume(info, name, ms) {
     state.info = info;
     state.name = name;
-    $("fstype").textContent = info.type;
+    $("fstype").textContent = info.encryption ? `${info.type} in ${info.encryption.toUpperCase()}` : info.type;
     $("fstype").title = info.forced ? "chosen in the Filesystem list" : "detected";
     $("fsname").textContent = name;
     $("fssize").textContent = human(info.size);
@@ -169,24 +170,48 @@
     return fill(ul, "/");
   }
 
-  async function openFile(file) {
+  // The image waiting for its password, while the unlock form shows.
+  let lockedFile = null;
+
+  function askPassword(file, enc) {
+    lockedFile = file;
+    $("unlock").hidden = false;
+    $("password").focus();
+    status(`${file.name} is an encrypted ${enc.toUpperCase()} container: enter its password.`);
+  }
+
+  async function openFile(file, password) {
     if (!file) return;
     sampleBlob = null;
     $("samplerow").hidden = true;
-    status(`Opening ${file.name} (${human(file.size)})…`);
+    if (!password) {
+      lockedFile = null;
+      $("unlock").hidden = true;
+    }
+    status(password ? `Unlocking ${file.name}…` : `Opening ${file.name} (${human(file.size)})…`);
     const t0 = performance.now();
     try {
-      const r = await call({ kind: "open", file, cache: $("cache").checked, fstype: $("kind").value });
+      // Deriving the key is the slow part of an unlock: a LUKS2 header may
+      // ask for seconds of Argon2, within the engine's limits.
+      const r = await call({ kind: "open", file, cache: $("cache").checked, fstype: $("kind").value, password: password || "" },
+        password ? UNLOCK_TIMEOUT : TIMEOUT);
       const ms = performance.now() - t0;
+      lockedFile = null;
+      $("unlock").hidden = true;
       state.timings.open = { engineMs: r.info.openMs, endToEndMs: ms };
       const t1 = performance.now();
       await showVolume(r.info, file.name, ms);
       state.timings.listRoot = performance.now() - t1;
-      status(`${file.name}: ${r.info.type}.`);
+      status(`${file.name}: ${r.info.type}${r.info.encryption ? ` in ${r.info.encryption.toUpperCase()}` : ""}.`);
     } catch (err) {
       $("volume").hidden = true;
+      if (err.info && err.info.encryption && !password) {
+        askPassword(file, err.info.encryption);
+        return;
+      }
       const t = err.info && err.info.type && err.info.type !== "unknown" ? ` (looks like ${err.info.type})` : "";
       status(`Could not open ${file.name}${t}: ${err.message}`, true);
+      if (password && lockedFile) $("password").focus();
     }
   }
 
@@ -373,6 +398,13 @@
     if (ev.target === drop && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); $("pick").click(); }
   });
   $("pick").addEventListener("change", (ev) => { openFile(ev.target.files[0]); ev.target.value = ""; });
+  $("unlock").addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    const input = $("password");
+    const password = input.value;
+    input.value = ""; // the page does not keep it either
+    if (lockedFile && password) openFile(lockedFile, password);
+  });
   $("sample").addEventListener("click", makeSample);
   $("sampledl").addEventListener("click", () => { if (sampleBlob) save(sampleBlob, "sample-fat32.img"); });
 

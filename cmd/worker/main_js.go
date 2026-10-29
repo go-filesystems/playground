@@ -8,7 +8,8 @@
 //
 // It exposes globalThis.fsplay:
 //
-//	open(file: File, cache: boolean, kind: string) -> string  (JSON Response; kind is one of core.Kinds)
+//	open(file: File, cache: boolean, kind: string, password?: string) -> string
+//	    (JSON Response; kind is one of core.Kinds; password unlocks a LUKS image)
 //	request(json: string)            -> [string, Uint8Array|null]
 package main
 
@@ -71,10 +72,14 @@ func main() {
 		if len(args) > 2 && args[2].Type() == js.TypeString {
 			kind = args[2].String()
 		}
+		var password []byte // cleared by OpenWith
+		if len(args) > 3 && args[3].Type() == js.TypeString {
+			password = []byte(args[3].String())
+		}
 		file := args[0]
 		size := int64(file.Get("size").Float())
 		r := &fileReaderAt{file: file, frs: frsCtor.New(), u8: u8, size: size}
-		info, err := s.OpenAs(r, size, kind)
+		info, err := s.OpenWith(r, size, kind, password)
 		return string(core.OpenResponse(info, err, float64(time.Since(t0).Microseconds())/1000))
 	})
 	request := js.FuncOf(func(this js.Value, args []js.Value) any {

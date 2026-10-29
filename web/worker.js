@@ -9,11 +9,14 @@ const ready = WebAssembly.instantiateStreaming(fetch("fsplay.wasm"), go.importOb
   .then((r) => { go.run(r.instance); });
 
 self.onmessage = async (e) => {
-  const { id, kind, file, cache, fstype, req } = e.data || {};
+  const { id, kind, file, cache, fstype, password, req } = e.data || {};
   try {
     await ready;
     if (kind === "open") {
-      const resp = self.fsplay.open(file, !!cache, typeof fstype === "string" ? fstype : "auto");
+      // The password goes to the engine for this open only; nothing here
+      // keeps it.
+      const resp = self.fsplay.open(file, !!cache, typeof fstype === "string" ? fstype : "auto",
+        typeof password === "string" ? password : "");
       self.postMessage({ id, resp });
       return;
     }

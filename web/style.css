@@ -74,6 +74,20 @@ button, .button {
 }
 button:focus-visible, .button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
 
+.unlock { margin: 0.75rem 0 0; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.unlock[hidden] { display: none; }
+.unlock .hint { flex-basis: 100%; margin: 0; }
+.unlock input {
+  font: inherit;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.15rem 0.4rem;
+  max-width: 100%;
+}
+.unlock input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
 #status { min-height: 1.5em; margin: 0.75rem 0; overflow-wrap: anywhere; }
 #status.error, .error { color: var(--error); }
 

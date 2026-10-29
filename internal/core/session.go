@@ -102,6 +102,9 @@ type Info struct {
 	OpenMs  float64 `json:"openMs"`
 	// Forced is a type the person chose rather than detect's answer.
 	Forced bool `json:"forced"`
+	// Encryption is the container the filesystem was unlocked from (EncLUKS)
+	// or empty. With ErrPassword it is the container that needs a password.
+	Encryption string `json:"encryption,omitempty"`
 }
 
 // Entry is one directory entry.
@@ -157,6 +160,14 @@ func (s *Session) Open(r io.ReaderAt, size int64) (Info, error) { return s.OpenA
 // when detect finds nothing at offset zero, tries the disk-image drivers
 // in turn); any other kind forces that driver.
 func (s *Session) OpenAs(r io.ReaderAt, size int64, kind string) (Info, error) {
+	return s.OpenWith(r, size, kind, nil)
+}
+
+// OpenWith is OpenAs for an image that may be encrypted: a LUKS container
+// needs password, which an image that is not encrypted ignores. OpenWith
+// clears password before it returns.
+func (s *Session) OpenWith(r io.ReaderAt, size int64, kind string, password []byte) (Info, error) {
+	defer clear(password)
 	if !slices.Contains(Kinds, kind) {
 		return Info{}, fmt.Errorf("%w: %q", ErrUnknownKind, kind)
 	}
@@ -168,21 +179,27 @@ func (s *Session) OpenAs(r io.ReaderAt, size int64, kind string) (Info, error) {
 	}
 	t0 := time.Now()
 	s.counter = NewCounter(r)
-	var src io.ReaderAt = s.counter
+	img, err := unlock(s.counter, size, password)
+	clear(password)
+	if err != nil {
+		return Info{Type: string(detect.Unknown), Size: size, Encryption: img.enc}, err
+	}
+	var src io.ReaderAt = img.r
 	if s.lim.MaxBlocks > 0 {
-		s.cache = NewBlockCache(s.counter, size, s.lim.BlockSize, s.lim.MaxBlocks)
+		// Over the decrypted image, so a cached block is decrypted once.
+		s.cache = NewBlockCache(img.r, img.size, s.lim.BlockSize, s.lim.MaxBlocks)
 		src = s.cache
 	}
-	fsys, t, err := openGuarded(src, size, kind)
+	fsys, t, err := openGuarded(src, img.size, kind)
 	if err != nil {
 		if t != "" && t != detect.Unknown {
-			return Info{Type: string(t), Size: size}, fmt.Errorf("%s: %w", t, err)
+			return Info{Type: string(t), Size: size, Encryption: img.enc}, fmt.Errorf("%s: %w", t, err)
 		}
-		return Info{Type: string(detect.Unknown), Size: size}, err
+		return Info{Type: string(detect.Unknown), Size: size, Encryption: img.enc}, err
 	}
 	s.fs = fsys
 	_, partial := fsys.(filesystem.Opener)
-	s.info = Info{Type: string(t), Size: size, Partial: partial, Cached: s.cache != nil, Forced: kind != "auto"}
+	s.info = Info{Type: string(t), Size: size, Partial: partial, Cached: s.cache != nil, Forced: kind != "auto", Encryption: img.enc}
 	if l, ok := fsys.(filesystem.LabelReader); ok {
 		s.info.Label = strings.TrimSpace(safeCall(l.Label))
 	}
