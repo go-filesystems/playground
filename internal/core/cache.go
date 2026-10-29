@@ -162,6 +162,31 @@ func (c *BlockCache) get(idx int64) ([]byte, error) {
 	return buf, nil
 }
 
+// WriteAt writes through to the reader under the cache, when it can be
+// written, and forgets the blocks the write touched: the next read takes them
+// from below, as written.
+func (c *BlockCache) WriteAt(p []byte, off int64) (int, error) {
+	w, ok := c.r.(io.WriterAt)
+	if !ok {
+		return 0, errReadOnly
+	}
+	n, err := w.WriteAt(p, off)
+	if n > 0 {
+		c.mu.Lock()
+		for idx := off / c.blockSize; idx <= (off+int64(n)-1)/c.blockSize; idx++ {
+			if e, ok := c.blocks[idx]; ok {
+				c.lru.Remove(e)
+				delete(c.blocks, idx)
+			}
+		}
+		c.mu.Unlock()
+	}
+	return n, err
+}
+
+// errReadOnly is a write to an image that cannot take one.
+var errReadOnly = errors.New("this image cannot be written")
+
 // Stats returns the cache's hits and misses and how many blocks it holds.
 func (c *BlockCache) Stats() (hits, misses int64, blocks int) {
 	c.mu.Lock()

@@ -46,10 +46,23 @@ func TestDAV(t *testing.T) {
 		t.Fatalf("GET: %d, %v, %d bytes, want %d", a.Status, err, len(a.Body), len(want))
 	}
 
-	// Read-only: the handler refuses a write.
-	a, err = s.DAV("PUT", "/new.txt", nil, []byte("x"))
-	if err != nil || a.Status < 400 {
-		t.Fatalf("PUT on a read-only export: %d, %v", a.Status, err)
+	// A write lands in the COW: visible to the page's own reads, counted,
+	// and the dropped image untouched.
+	before := bytes.Clone(img)
+	a, err = s.DAV("PUT", "/new.txt", nil, []byte("written in the tab"))
+	if err != nil || a.Status >= 300 {
+		t.Fatalf("PUT: %d, %v: %s", a.Status, err, a.Body)
+	}
+	if got, _, err := s.Read("/NEW.TXT", 0, 100); err != nil || string(got) != "written in the tab" {
+		if got, _, err = s.Read("/new.txt", 0, 100); err != nil || string(got) != "written in the tab" {
+			t.Fatalf("reading it back: %q, %v", got, err)
+		}
+	}
+	if st := s.Stats(); st.Changed == 0 {
+		t.Fatal("no change counted")
+	}
+	if !bytes.Equal(before, img) {
+		t.Fatal("the dropped image was written")
 	}
 
 	for _, c := range []struct{ method, target string }{
@@ -108,7 +121,7 @@ func FuzzDAV(f *testing.F) {
 			t.Fatalf("%d bytes answered", len(a.Body))
 		}
 		if !bytes.Equal(before, img) {
-			t.Fatal("a read-only export changed the image")
+			t.Fatal("a request wrote the dropped image, not the COW")
 		}
 	})
 }

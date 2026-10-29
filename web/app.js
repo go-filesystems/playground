@@ -154,6 +154,8 @@
   function showVolume(info, name, ms) {
     closeExplorer(); // it was browsing the image this one replaces
     state.info = info;
+    state.changed = 0;
+    $("changesrow").hidden = true;
     state.name = name;
     $("fstype").textContent = info.encryption ? `${info.type} in ${info.encryption.toUpperCase()}` : info.type;
     $("fstype").title = info.forced ? "chosen in the Filesystem list" : "detected";
@@ -181,8 +183,12 @@
     status(`${file.name} is an encrypted ${enc.toUpperCase()} container: enter its password.`);
   }
 
+  // keepChanges asks before an open throws away changes not downloaded.
+  const keepChanges = () => state.changed > 0 &&
+    !window.confirm("The open image has changes you have not downloaded. Open another image and lose them?");
+
   async function openFile(file, password) {
-    if (!file) return;
+    if (!file || (!password && keepChanges())) return;
     sampleBlob = null;
     $("samplerow").hidden = true;
     if (!password) {
@@ -217,6 +223,7 @@
   }
 
   async function makeSample() {
+    if (keepChanges()) return;
     status("Formatting a FAT32 image in your browser…");
     const t0 = performance.now();
     try {
@@ -413,6 +420,7 @@
         // The last few calls, for the end-to-end test and a curious console.
         state.dav.push({ method, path, status: r.status });
         if (state.dav.length > 50) state.dav.shift();
+        if (!READING.includes(method)) changed();
         return { status: r.status, headers: r.headers || [], body: r.data || new Uint8Array(0) };
       });
     },
@@ -424,6 +432,61 @@
       try { state.explorer = JSON.parse(json); } catch (_) { /* ignore */ }
     },
   };
+
+  // ---- changes ------------------------------------------------------------
+  //
+  // A write the explorer makes lands in the engine's memory (a copy-on-write
+  // of the image), never in the dropped file. The page shows how much changed
+  // and downloads the image with the changes in it, the same format.
+
+  const READING = ["OPTIONS", "PROPFIND", "GET", "HEAD"];
+
+  // changed refreshes what the page shows after a write: the amount, and the
+  // tree, which may have gained or lost entries.
+  let refreshing = null;
+  function changed() {
+    if (refreshing) return;
+    refreshing = setTimeout(async () => {
+      refreshing = null;
+      try {
+        const r = await req({ op: "stats" });
+        state.changed = r.stats.changedBytes;
+        $("changes").textContent = human(r.stats.changedBytes) + " of the image changed, in this tab";
+        $("changesrow").hidden = !(r.stats.changedBytes > 0);
+        const ul = $("tree").querySelector("ul.dir");
+        if (ul) await fill(ul, "/");
+      } catch (_) { /* the next write tries again */ }
+    }, 300);
+  }
+
+  async function downloadModified() {
+    const base = safeName(state.name || "image");
+    const dot = base.lastIndexOf(".");
+    const name = dot > 0 ? base.slice(0, dot) + "-modified" + base.slice(dot) : base + "-modified";
+    const parts = [];
+    let off = 0, size = 0;
+    try {
+      do {
+        const r = await req({ op: "image", off, n: CHUNK });
+        size = r.size;
+        if (!r.data || r.data.length === 0) break;
+        parts.push(r.data);
+        off += r.data.length;
+        status(`Assembling ${name}: ${human(off)} of ${human(size)}…`);
+      } while (off < size);
+      if (off !== size) throw new Error(`got ${off} of ${size} bytes`);
+      save(new Blob(parts, { type: "application/octet-stream" }), name);
+      status(`${name}: ${human(off)} saved.`);
+    } catch (err) {
+      status(`Cannot download the modified image: ${err.message}`, true);
+    }
+  }
+  state.downloadModified = downloadModified;
+
+  // Leaving with changes not downloaded loses them: say so.
+  window.addEventListener("beforeunload", (ev) => {
+    if (state.changed > 0) { ev.preventDefault(); ev.returnValue = ""; }
+  });
 
   function openExplorer() {
     if (!state.info) return;
@@ -440,6 +503,7 @@
   state.openExplorer = openExplorer;
 
   $("explore").addEventListener("click", openExplorer);
+  $("imagedl").addEventListener("click", downloadModified);
   $("explorerclose").addEventListener("click", closeExplorer);
 
   $("unlock").addEventListener("submit", (ev) => {

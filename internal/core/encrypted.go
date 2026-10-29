@@ -71,5 +71,5 @@ func openLUKS(r io.ReaderAt, size int64, password []byte) (dev *luks.Device, err
 			dev, err = nil, fmt.Errorf("unlocking failed on this image: %v", p)
 		}
 	}()
-	return luks.OpenFromLimited(roDevice{r: r, size: size}, password, luksLimits)
+	return luks.OpenFromLimited(rwDevice{roDevice{r: r, size: size}}, password, luksLimits)
 }

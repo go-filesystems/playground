@@ -85,6 +85,10 @@ func (s *Session) handle(b []byte, out *Response) ([]byte, error) {
 		data, size, err := s.Read(r.Path, r.Off, r.N)
 		out.Size = size
 		return data, err
+	case "image":
+		data, size, err := s.ReadImage(r.Off, r.N)
+		out.Size = size
+		return data, err
 	case "stats":
 		st := s.Stats()
 		out.Stats = &st

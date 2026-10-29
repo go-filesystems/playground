@@ -56,10 +56,11 @@
       <div><dt>Label</dt><dd id="fslabel"></dd></div>
       <div><dt>Opened in</dt><dd id="fsopen"></dd></div>
       <div><dt>Explorer</dt><dd><button id="explore" type="button">open in the explorer</button></dd></div>
+      <div id="changesrow" hidden><dt>Changes</dt><dd><span id="changes"></span> <button id="imagedl" type="button">download the modified image</button></dd></div>
       <div id="samplerow" hidden><dt>Sample</dt><dd><button id="sampledl" type="button">download the sample image</button></dd></div>
     </dl>
     <section id="explorerbox" class="explorer" hidden aria-label="File explorer">
-      <p class="hint">The <a href="https://github.com/go-fileshare/explorer">go-fileshare explorer</a>, loaded on demand (about 5 MB), browsing this image through its WebDAV, served by the engine in this tab. <button id="explorerclose" type="button">close</button></p>
+      <p class="hint">The <a href="https://github.com/go-fileshare/explorer">go-fileshare explorer</a>, loaded on demand (about 5 MB), browsing this image through its WebDAV, served by the engine in this tab. Changes made there stay in this tab's memory (up to 256 MiB) until you download the modified image: the file you dropped is never written. <button id="explorerclose" type="button">close</button></p>
       <iframe id="explorerframe" title="File explorer"></iframe>
     </section>
     <div class="panes">

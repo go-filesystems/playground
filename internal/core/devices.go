@@ -44,6 +44,17 @@ func (d roDevice) Size() (int64, error)                    { return d.size, nil 
 func (d roDevice) Truncate(int64) error                    { return os.ErrPermission }
 func (d roDevice) Close() error                            { return nil }
 
+// rwDevice is a block device over r that writes when r can: the COW, under a
+// LUKS container, so that a change is encrypted into the image.
+type rwDevice struct{ roDevice }
+
+func (d rwDevice) WriteAt(p []byte, off int64) (int, error) {
+	if w, ok := d.r.(io.WriterAt); ok {
+		return w.WriteAt(p, off)
+	}
+	return 0, os.ErrPermission
+}
+
 // openDevice opens r with the device-shaped driver kind, the partition found
 // in its table (or the whole image).
 func openDevice(kind string, r io.ReaderAt, size int64) (filesystem.Filesystem, error) {
