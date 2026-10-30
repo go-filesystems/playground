@@ -83,10 +83,10 @@ with the changes in it, in the same format. It is read back from the engine in
 4 MiB pieces. Opening another image, or leaving the page, asks first while changes
 are not downloaded.
 
-FAT32 images made by `go-filesystems/fat32`, the sample among them, draw two
-warnings from `fsck_msdos`: a `..` entry that should be 0 under the root, and an
-FSInfo free count left unset. Both come from the driver and are being fixed there.
-The copy-on-write layer adds none.
+A modified FAT32 image passes `fsck_msdos -n` with no warning, since
+`go-filesystems/fat32` v0.5.1. That release writes 0 in a `..` entry under the root
+and keeps the FSInfo free count exact. The test's modified image can be written out
+for such a checker with `CORE_MODIFIED_IMAGE=<file>`.
 
 ## How it works
 
