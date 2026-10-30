@@ -20,7 +20,7 @@ require (
 	github.com/go-filesystems/webdav v0.6.0
 	github.com/go-filesystems/xfs v0.3.0
 	github.com/go-filesystems/zfs v0.3.0
-	github.com/playwright-community/playwright-go v0.5700.1
+	github.com/playwright-community/playwright-go v0.6201.1
 	github.com/spf13/cobra v1.10.2
 )
 
