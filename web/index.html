@@ -40,7 +40,7 @@
         </select></label>
       <label class="opt"><input id="cache" type="checkbox" checked> block cache</label></p>
     <p class="hint">Detected: FAT32, exFAT, ext4, NTFS, ISO 9660, SquashFS, HFS+ and UFS at offset 0. APFS, Btrfs, XFS and ZFS are found in a disk image's partition table, or tried in turn when nothing is detected; choose one to force it.
-      An encrypted LUKS1 or LUKS2 image asks for its password; the filesystem inside is then detected, or the one chosen.</p>
+      An encrypted image, LUKS1, LUKS2 or an APFS FileVault volume, asks for its password; the filesystem inside is then detected, or the one chosen.</p>
   </section>
   <form id="unlock" class="unlock" hidden>
     <label>Password <input id="password" type="password" autocomplete="off" spellcheck="false"></label>
