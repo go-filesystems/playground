@@ -130,6 +130,8 @@ type Stats struct {
 	CacheHits    int64 `json:"cacheHits"`
 	CacheMisses  int64 `json:"cacheMisses"`
 	CacheBlocks  int   `json:"cacheBlocks"`
+	// Changed is how many bytes of the image's blocks were written (COW).
+	Changed int64 `json:"changedBytes"`
 }
 
 // Session is one opened image.
@@ -141,6 +143,7 @@ type Session struct {
 	counter *Counter
 	cache   *BlockCache
 	dav     http.Handler // the open image's WebDAV, made on first use
+	cow     *COW         // the image as changed, in memory
 
 	// The last whole file read from a driver without Opener, so streaming
 	// it in chunks does not read it again per chunk.
@@ -181,7 +184,9 @@ func (s *Session) OpenWith(r io.ReaderAt, size int64, kind string, password []by
 	}
 	t0 := time.Now()
 	s.counter = NewCounter(r)
-	img, err := unlock(s.counter, size, password)
+	// Changes go to memory, never to the dropped file (cow.go).
+	s.cow = NewCOW(s.counter, size, MaxChanges)
+	img, err := unlock(s.cow, size, password)
 	clear(password)
 	if err != nil {
 		return Info{Type: string(detect.Unknown), Size: size, Encryption: img.enc}, err
@@ -281,7 +286,7 @@ func (s *Session) closeLocked() {
 	if s.fs != nil {
 		s.fs.Close()
 	}
-	s.fs, s.info, s.counter, s.cache, s.whole, s.wholePath, s.dav = nil, Info{}, nil, nil, nil, "", nil
+	s.fs, s.info, s.counter, s.cache, s.whole, s.wholePath, s.dav, s.cow = nil, Info{}, nil, nil, nil, "", nil, nil
 }
 
 // cleanPath validates a path from the page: absolute, no NUL, bounded.
@@ -455,7 +460,34 @@ func (s *Session) Stats() Stats {
 	if s.cache != nil {
 		st.CacheHits, st.CacheMisses, st.CacheBlocks = s.cache.Stats()
 	}
+	if s.cow != nil {
+		st.Changed = s.cow.Changed()
+	}
 	return st
+}
+
+// ReadImage returns at most n bytes (capped at MaxChunk) of the image as
+// changed, from offset off, and the image's size: read from start to end, it
+// is the modified image to download.
+func (s *Session) ReadImage(off, n int64) ([]byte, int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cow == nil {
+		return nil, 0, ErrNotOpen
+	}
+	size := s.cow.Size()
+	if off < 0 || n < 0 {
+		return nil, size, fmt.Errorf("negative offset or length")
+	}
+	if off >= size {
+		return []byte{}, size, nil
+	}
+	b := make([]byte, min(n, s.lim.MaxChunk, size-off))
+	got, err := s.cow.ReadAt(b, off)
+	if err == io.EOF && got == len(b) {
+		err = nil
+	}
+	return b[:got], size, err
 }
 
 // Info returns the open image's description.

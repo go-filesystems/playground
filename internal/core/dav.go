@@ -20,9 +20,12 @@ import (
 // piece, or a listing of MaxEntries.
 const MaxDAV = 16 << 20
 
-// davMethods are the methods passed to the handler; it refuses the writing
-// ones itself, the export being read-only.
-var davMethods = []string{"OPTIONS", "PROPFIND", "GET", "HEAD", "PUT", "MKCOL", "DELETE", "MOVE", "COPY"}
+// davMethods are the methods passed to the handler; davReading those that
+// change nothing.
+var (
+	davMethods = []string{"OPTIONS", "PROPFIND", "GET", "HEAD", "PUT", "MKCOL", "DELETE", "MOVE", "COPY", "PROPPATCH", "LOCK", "UNLOCK"}
+	davReading = []string{"OPTIONS", "PROPFIND", "GET", "HEAD"}
+)
 
 // ErrTooLargeAnswer is a WebDAV answer over MaxDAV.
 var ErrTooLargeAnswer = errors.New("the answer is larger than the page takes")
@@ -53,11 +56,17 @@ func (s *Session) DAV(method, target string, header [][2]string, body []byte) (a
 		return a, ErrNotOpen
 	}
 	if s.dav == nil {
-		h, err := webdav.New(s.fs)
+		// Read-write: a write reaches the driver, then the COW under it,
+		// in memory; the dropped file is never written.
+		h, err := webdav.New(s.fs, webdav.ReadWrite())
 		if err != nil {
 			return a, err
 		}
 		s.dav = h
+	}
+	if !slices.Contains(davReading, method) {
+		// The file a page's read keeps whole may be the one this changes.
+		s.whole, s.wholePath = nil, ""
 	}
 	req, err := http.NewRequest(method, "http://image"+target, bytes.NewReader(body))
 	if err != nil {

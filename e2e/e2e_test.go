@@ -29,6 +29,7 @@ import (
 	"github.com/go-fde/luks"
 	filesystem_btrfs "github.com/go-filesystems/btrfs"
 	filesystem_ext4 "github.com/go-filesystems/ext4"
+	filesystem_fat32 "github.com/go-filesystems/fat32"
 	"github.com/playwright-community/playwright-go"
 
 	"github.com/go-filesystems/playground/internal/site"
@@ -435,6 +436,56 @@ func TestExplorer(t *testing.T) {
 	}
 	if v, _ := p.Evaluate(`() => document.getElementById("explorerbox").hidden && document.getElementById("explorerframe").getAttribute("src") === "about:blank"`); v != true {
 		t.Fatal("closing did not unload the explorer")
+	}
+}
+
+// TestModifiedImage writes to the sample through the bridge, as the explorer
+// does, sees the page count the change and list the new file, downloads the
+// modified image, and opens that download again with the driver: the file is
+// in it.
+func TestModifiedImage(t *testing.T) {
+	b := launch(t)
+	b.open(t)
+	p := b.page
+	if err := p.Locator("#sample").Click(); err != nil {
+		t.Fatal(err)
+	}
+	b.until(t, "sample opened", `() => document.getElementById("fstype").textContent === "fat32"`, 30*time.Second)
+	if _, err := p.Evaluate(`async () => {
+		const br = window.fileshareExplorerBridge;
+		const put = await br.request("PUT", "/written.txt", [], new TextEncoder().encode("written in the browser"));
+		const del = await br.request("DELETE", "/README.TXT", [], null);
+		return [put.status, del.status];
+	}`); err != nil {
+		t.Fatal(err)
+	}
+	b.until(t, "change counted", `() => !document.getElementById("changesrow").hidden`, 15*time.Second)
+	b.until(t, "tree refreshed", `() => {
+		const t = document.getElementById("tree").textContent;
+		return t.includes("WRITTEN.TXT") || t.includes("written.txt");
+	}`, 15*time.Second)
+	dl, err := p.ExpectDownload(func() error { return p.Locator("#imagedl").Click() })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dl.SuggestedFilename() != "sample-fat32-modified.img" {
+		t.Fatalf("download named %q", dl.SuggestedFilename())
+	}
+	path := filepath.Join(t.TempDir(), "modified.img")
+	if err := dl.SaveAs(path); err != nil {
+		t.Fatal(err)
+	}
+	fsys, err := filesystem_fat32.Open(path, -1)
+	if err != nil {
+		t.Fatalf("the downloaded image does not open: %v", err)
+	}
+	defer fsys.Close()
+	got, err := fsys.ReadFile("/written.txt")
+	if err != nil || string(got) != "written in the browser" {
+		t.Fatalf("the written file: %q, %v", got, err)
+	}
+	if _, err := fsys.ReadFile("/README.TXT"); err == nil {
+		t.Fatal("the deleted file is still in the download")
 	}
 }
 

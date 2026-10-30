@@ -62,9 +62,23 @@ in a same-origin iframe. It is fetched only then: 4.1 MB compressed. It browses 
 image the way it browses a fileshare server, over WebDAV. Its requests do not go to
 any network. The page hands them to the engine, which answers them with
 [go-filesystems/webdav](https://github.com/go-filesystems/webdav) over the open
-image, **read-only**. Closing the explorer unloads it. Uploading, renaming and
-deleting are refused for now; writing comes next, through an overlay, with the
-modified image to download.
+image. Closing the explorer unloads it.
+
+**Changing the image.** In the explorer you can upload, make folders, rename,
+copy and delete, on FAT32, exFAT and ext4: the drivers that write through
+`OpenReader`. The other filesystems refuse writes. Nothing is written to the file
+you dropped, which a page can only read. A change lands in a **copy-on-write**
+layer under the drivers, in the tab's memory: at most 256 MiB, in 64 KiB blocks.
+Inside a LUKS container, it lands encrypted. The page then shows how much changed,
+and **download the modified image** saves `<name>-modified.<ext>`: the original
+with the changes in it, in the same format. It is read back from the engine in
+4 MiB pieces. Opening another image, or leaving the page, asks first while changes
+are not downloaded.
+
+FAT32 images made by `go-filesystems/fat32`, the sample among them, draw two
+warnings from `fsck_msdos`: a `..` entry that should be 0 under the root, and an
+FSInfo free count left unset. Both come from the driver and are being fixed there.
+The copy-on-write layer adds none.
 
 ## How it works
 
@@ -110,6 +124,10 @@ The image is untrusted input.
   costs. The engine refuses a header that asks for more than 2²² PBKDF2 iterations,
   or for Argon2 beyond 16 passes or 1 GiB (go-fde/luks `OpenFromLimited`), before
   deriving anything. Within those limits an unlock gets 180 s instead of 30.
+- **Writes stay in the tab.** The dropped file is never written: changes go to an
+  in-memory copy-on-write of the image, bounded at 256 MiB. A write that would pass
+  that bound is refused whole. Nothing changed leaves the tab unless you download
+  the modified image.
 - The page's Content-Security-Policy allows only its own scripts and WebAssembly.
 - Requests to the engine are decoded strictly and fuzzed (`FuzzHandle`), and so is
   browsing a damaged image (`FuzzImage`).
