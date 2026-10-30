@@ -52,9 +52,17 @@ engine (2.39 → 3.39 MB gzip).
 ([go-fde/luks](https://github.com/go-fde/luks)) is recognised by its header, and
 the page asks for its password. The engine unlocks it and opens the filesystem in
 the payload: detected, or the one chosen in the list. Wrong passwords are refused,
-and the form stays to try again. APFS FileVault containers are not supported yet:
-go-filesystems/apfs cannot read one through its decrypted device so far, and that is
-being fixed there first.
+and the form stays to try again.
+
+An **APFS FileVault** volume
+([go-filesystems/apfs](https://github.com/go-filesystems/apfs) v0.4.0, keys from
+[go-fde/apfs](https://github.com/go-fde/apfs)) is recognised by the keybag its
+container names, at offset 0 or in a GPT's APFS partition. If the volume cannot be
+read without its key, the page asks for the password. With one, the volume opens
+through its key: only what FileVault encrypts is decrypted, and the container's
+metadata is read as it is. A FileVault volume opens **read-only**.
+go-filesystems/apfs refuses to write to it, because its writers would store data in
+clear. The keybag's key derivation is bounded as LUKS's is.
 
 **Open in the explorer.** Once an image is open, *open in the explorer* loads the
 [go-fileshare explorer](https://github.com/go-fileshare/explorer) (v0.4.0 or later)
@@ -120,10 +128,12 @@ The image is untrusted input.
   unlocked or refused. JavaScript and Go strings cannot be wiped, though, so a copy
   may stay in the tab's memory until it is garbage-collected. Close the tab when
   done with a sensitive image.
-- **The LUKS header is untrusted** too: it states how much key derivation unlocking
-  costs. The engine refuses a header that asks for more than 2²² PBKDF2 iterations,
-  or for Argon2 beyond 16 passes or 1 GiB (go-fde/luks `OpenFromLimited`), before
-  deriving anything. Within those limits an unlock gets 180 s instead of 30.
+- **The LUKS header and the FileVault keybag are untrusted** too: they state how
+  much key derivation unlocking costs. The engine refuses one that asks for more
+  than 2²² PBKDF2 iterations, or for Argon2 beyond 16 passes or 1 GiB, before
+  deriving anything (go-fde/luks `OpenFromLimited`, go-filesystems/apfs
+  `OpenFDEFromBlockDeviceLimited`). The GPT entries followed to find a container
+  are bounded too. Within those limits an unlock gets 180 s instead of 30.
 - **Writes stay in the tab.** The dropped file is never written: changes go to an
   in-memory copy-on-write of the image, bounded at 256 MiB. A write that would pass
   that bound is refused whole. Nothing changed leaves the tab unless you download

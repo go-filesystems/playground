@@ -169,8 +169,8 @@ func (s *Session) OpenAs(r io.ReaderAt, size int64, kind string) (Info, error) {
 }
 
 // OpenWith is OpenAs for an image that may be encrypted: a LUKS container
-// needs password, which an image that is not encrypted ignores. OpenWith
-// clears password before it returns.
+// or an APFS FileVault volume needs password, which an image that is not
+// encrypted ignores. OpenWith clears password before it returns.
 func (s *Session) OpenWith(r io.ReaderAt, size int64, kind string, password []byte) (Info, error) {
 	defer clear(password)
 	if !slices.Contains(Kinds, kind) {
@@ -187,7 +187,6 @@ func (s *Session) OpenWith(r io.ReaderAt, size int64, kind string, password []by
 	// Changes go to memory, never to the dropped file (cow.go).
 	s.cow = NewCOW(s.counter, size, MaxChanges)
 	img, err := unlock(s.cow, size, password)
-	clear(password)
 	if err != nil {
 		return Info{Type: string(detect.Unknown), Size: size, Encryption: img.enc}, err
 	}
@@ -197,7 +196,11 @@ func (s *Session) OpenWith(r io.ReaderAt, size int64, kind string, password []by
 		s.cache = NewBlockCache(img.r, img.size, s.lim.BlockSize, s.lim.MaxBlocks)
 		src = s.cache
 	}
-	fsys, t, err := openGuarded(src, img.size, kind)
+	fsys, t, enc, err := openMaybeFileVault(src, img.size, kind, password, img.enc == "")
+	clear(password)
+	if enc != "" {
+		img.enc = enc
+	}
 	if err != nil {
 		if t != "" && t != detect.Unknown {
 			return Info{Type: string(t), Size: size, Encryption: img.enc}, fmt.Errorf("%s: %w", t, err)

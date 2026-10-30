@@ -157,7 +157,7 @@
     state.changed = 0;
     $("changesrow").hidden = true;
     state.name = name;
-    $("fstype").textContent = info.encryption ? `${info.type} in ${info.encryption.toUpperCase()}` : info.type;
+    $("fstype").textContent = info.encryption ? `${info.type} in ${encName(info.encryption)}` : info.type;
     $("fstype").title = info.forced ? "chosen in the Filesystem list" : "detected";
     $("fsname").textContent = name;
     $("fssize").textContent = human(info.size);
@@ -173,6 +173,9 @@
     return fill(ul, "/");
   }
 
+  // encName is how an encryption the engine reports is named on the page.
+  const encName = (enc) => ({ luks: "LUKS", filevault: "FileVault" })[enc] || String(enc);
+
   // The image waiting for its password, while the unlock form shows.
   let lockedFile = null;
 
@@ -180,7 +183,7 @@
     lockedFile = file;
     $("unlock").hidden = false;
     $("password").focus();
-    status(`${file.name} is an encrypted ${enc.toUpperCase()} container: enter its password.`);
+    status(`${file.name} is an encrypted ${encName(enc)} container: enter its password.`);
   }
 
   // keepChanges asks before an open throws away changes not downloaded.
@@ -209,7 +212,7 @@
       const t1 = performance.now();
       await showVolume(r.info, file.name, ms);
       state.timings.listRoot = performance.now() - t1;
-      status(`${file.name}: ${r.info.type}${r.info.encryption ? ` in ${r.info.encryption.toUpperCase()}` : ""}.`);
+      status(`${file.name}: ${r.info.type}${r.info.encryption ? ` in ${encName(r.info.encryption)}` : ""}.`);
     } catch (err) {
       $("volume").hidden = true;
       if (err.info && err.info.encryption && !password) {
