@@ -53,8 +53,8 @@ github.com/go-filesystems/exfat v0.4.0 h1:GZbQ15MI6XEkm3sY/xgSjjHIQ9Tj4SHrzLXGLn
 github.com/go-filesystems/exfat v0.4.0/go.mod h1:UZwq+9a82Kykb73ssRMlw45gsSTESW4bXOcHnJ7AxG8=
 github.com/go-filesystems/ext4 v0.3.0 h1:VOb/mm9zAwtE/u2goyHmreOSx4LVEsyNideYFOknf1w=
 github.com/go-filesystems/ext4 v0.3.0/go.mod h1:1yHSrEW9jDX//E0P/oqz8PLKW1qPnff0puuPUY2omDM=
-github.com/go-filesystems/fat32 v0.5.1-0.20261028211821-38b408c93bc3 h1:ER9waTk0G+OKetcDmFkz5JLWkCf608jYAEoLvRQA93M=
-github.com/go-filesystems/fat32 v0.5.1-0.20261028211821-38b408c93bc3/go.mod h1:1X9zusWgWQsowu/PVMDDzXNwRa3yVLjPm9wvAg21m5I=
+github.com/go-filesystems/fat32 v0.5.1 h1:ifXNmRc3Tv32YsJ92usmojnw29H60TV0CWyjuNYYzX8=
+github.com/go-filesystems/fat32 v0.5.1/go.mod h1:1X9zusWgWQsowu/PVMDDzXNwRa3yVLjPm9wvAg21m5I=
 github.com/go-filesystems/hfsplus v0.4.0 h1:kjHa+vyNxwC57O+ht1SdR9W6TjzJlEhb3HGNb8els6U=
 github.com/go-filesystems/hfsplus v0.4.0/go.mod h1:L1VH0uLx4WWbeyoSHXGUS8/gqi5FqI8s2u8UIK0FoV8=
 github.com/go-filesystems/hostcopy v0.1.0 h1:eNOy7iGrEe7dGZQ+UhnXJraZsnT+Ht3pP3OIWy69Wq0=

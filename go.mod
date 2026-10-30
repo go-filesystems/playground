@@ -10,7 +10,7 @@ require (
 	github.com/go-filesystems/detect v0.3.0
 	github.com/go-filesystems/exfat v0.4.0
 	github.com/go-filesystems/ext4 v0.3.0
-	github.com/go-filesystems/fat32 v0.5.1-0.20261028211821-38b408c93bc3
+	github.com/go-filesystems/fat32 v0.5.1
 	github.com/go-filesystems/hfsplus v0.4.0
 	github.com/go-filesystems/interface v0.5.0
 	github.com/go-filesystems/iso9660 v0.4.0
