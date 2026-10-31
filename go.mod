@@ -3,9 +3,9 @@ module github.com/go-filesystems/playground
 go 1.27.3
 
 require (
-	github.com/go-fde/apfs v0.2.0
+	github.com/go-fde/apfs v0.3.0
 	github.com/go-fde/luks v0.2.0
-	github.com/go-filesystems/apfs v0.4.0
+	github.com/go-filesystems/apfs v0.4.1
 	github.com/go-filesystems/btrfs v0.3.0
 	github.com/go-filesystems/detect v0.3.0
 	github.com/go-filesystems/exfat v0.4.0
@@ -37,7 +37,7 @@ require (
 	github.com/go-compressions/lzfse v0.5.0 // indirect
 	github.com/go-crdt/crdt v0.57.0 // indirect
 	github.com/go-encryptions/ccm v0.0.0-20260927083542-1713f748107c // indirect
-	github.com/go-encryptions/xts v0.0.0-20261012185738-047ae186ad23 // indirect
+	github.com/go-encryptions/xts v0.1.0 // indirect
 	github.com/go-encryptions/zfscrypt v0.0.0-20260927173133-ff7dd33bb415 // indirect
 	github.com/go-fileshare/explorer v0.4.0 // indirect
 	github.com/go-fileshare/portal v0.3.2 // indirect
