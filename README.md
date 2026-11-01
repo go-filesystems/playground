@@ -15,6 +15,9 @@ files into it and opens it again; you can download it too.
 
 ## What it opens
 
+Small FAT images now open too: FAT12 and FAT16, what `newfs_msdos -F 12|16` and
+`mkfs.vfat` make below about 33 MiB (fat32 v0.6.0, detect v0.4.0), read-only.
+
 A filesystem at offset 0 of the file (a filesystem image, not a partitioned disk),
 detected by [`go-filesystems/detect`](https://github.com/go-filesystems/detect) and
 opened by the same eight pure-Go drivers
@@ -22,6 +25,7 @@ opened by the same eight pure-Go drivers
 
 | Filesystem | Driver | Partial reads |
 |---|---|---|
+| FAT12, FAT16 (small FAT images, read-only) | [fat32](https://github.com/go-filesystems/fat32) | yes |
 | FAT32 | [fat32](https://github.com/go-filesystems/fat32) | yes |
 | exFAT | [exfat](https://github.com/go-filesystems/exfat) | yes |
 | ext4 | [ext4](https://github.com/go-filesystems/ext4) | yes |

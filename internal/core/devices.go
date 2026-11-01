@@ -23,7 +23,7 @@ import (
 // is detect's answer, the rest force a driver.
 var Kinds = []string{
 	"auto",
-	string(detect.FAT32), string(detect.ExFAT), string(detect.Ext4), string(detect.NTFS),
+	string(detect.FAT12), string(detect.FAT16), string(detect.FAT32), string(detect.ExFAT), string(detect.Ext4), string(detect.NTFS),
 	string(detect.ISO9660), string(detect.SquashFS), string(detect.HFSPlus), string(detect.UFS),
 	"apfs", "btrfs", "xfs", "zfs",
 }

@@ -38,6 +38,8 @@ var registerOnce sync.Once
 // registerDrivers. apfs, btrfs, xfs and zfs open a partition of a disk
 // image through a block device instead (devices.go).
 var readers = map[detect.Type]detect.Opener{
+	detect.FAT12:    filesystem_fat32.OpenReader,
+	detect.FAT16:    filesystem_fat32.OpenReader,
 	detect.FAT32:    filesystem_fat32.OpenReader,
 	detect.ExFAT:    filesystem_exfat.OpenReader,
 	detect.Ext4:     filesystem_ext4.OpenReader,
