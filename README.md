@@ -16,7 +16,8 @@ files into it and opens it again; you can download it too.
 ## What it opens
 
 Small FAT images now open too: FAT12 and FAT16, what `newfs_msdos -F 12|16` and
-`mkfs.vfat` make below about 33 MiB (fat32 v0.6.0, detect v0.4.0), read-only.
+`mkfs.vfat` make below about 33 MiB (fat32 v0.7.0, detect v0.4.0). You can change
+them in the explorer like a FAT32 image.
 
 A filesystem at offset 0 of the file (a filesystem image, not a partitioned disk),
 detected by [`go-filesystems/detect`](https://github.com/go-filesystems/detect) and
@@ -25,7 +26,7 @@ opened by the same eight pure-Go drivers
 
 | Filesystem | Driver | Partial reads |
 |---|---|---|
-| FAT12, FAT16 (small FAT images, read-only) | [fat32](https://github.com/go-filesystems/fat32) | yes |
+| FAT12, FAT16 (small FAT images) | [fat32](https://github.com/go-filesystems/fat32) | yes |
 | FAT32 | [fat32](https://github.com/go-filesystems/fat32) | yes |
 | exFAT | [exfat](https://github.com/go-filesystems/exfat) | yes |
 | ext4 | [ext4](https://github.com/go-filesystems/ext4) | yes |
@@ -77,7 +78,8 @@ any network. The page hands them to the engine, which answers them with
 image. Closing the explorer unloads it.
 
 **Changing the image.** In the explorer you can upload, make folders, rename,
-copy and delete, on FAT32, exFAT and ext4: the drivers that write through
+copy and delete, on FAT12, FAT16, FAT32, exFAT and ext4 (a FAT12/16 root directory
+cannot grow: a full one refuses new entries): the drivers that write through
 `OpenReader`. The other filesystems refuse writes. Nothing is written to the file
 you dropped, which a page can only read. A change lands in a **copy-on-write**
 layer under the drivers, in the tab's memory: at most 256 MiB, in 64 KiB blocks.
