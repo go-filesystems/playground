@@ -5,22 +5,22 @@ go 1.27.3
 require (
 	github.com/go-fde/apfs v0.3.0
 	github.com/go-fde/luks v0.2.0
-	github.com/go-filesystems/apfs v0.4.1
-	github.com/go-filesystems/btrfs v0.3.0
-	github.com/go-filesystems/detect v0.4.0
-	github.com/go-filesystems/exfat v0.4.0
-	github.com/go-filesystems/ext4 v0.3.0
-	github.com/go-filesystems/fat32 v0.7.0
-	github.com/go-filesystems/hfsplus v0.4.0
+	github.com/go-filesystems/apfs v0.5.0
+	github.com/go-filesystems/btrfs v0.4.0
+	github.com/go-filesystems/detect v0.5.1
+	github.com/go-filesystems/exfat v0.4.1
+	github.com/go-filesystems/ext4 v0.4.0
+	github.com/go-filesystems/fat32 v0.7.1
+	github.com/go-filesystems/hfsplus v0.5.0
 	github.com/go-filesystems/interface v0.5.0
-	github.com/go-filesystems/iso9660 v0.4.0
-	github.com/go-filesystems/ntfs v0.2.0
-	github.com/go-filesystems/squashfs v0.4.0
-	github.com/go-filesystems/ufs v0.3.0
+	github.com/go-filesystems/iso9660 v0.5.0
+	github.com/go-filesystems/ntfs v0.3.0
+	github.com/go-filesystems/squashfs v0.6.0
+	github.com/go-filesystems/ufs v0.4.0
 	github.com/go-filesystems/webdav v0.6.0
-	github.com/go-filesystems/xfs v0.3.0
-	github.com/go-filesystems/zfs v0.3.0
-	github.com/playwright-community/playwright-go v0.5700.1
+	github.com/go-filesystems/xfs v0.4.0
+	github.com/go-filesystems/zfs v0.4.0
+	github.com/playwright-community/playwright-go v0.6201.1
 	github.com/spf13/cobra v1.10.2
 )
 
