@@ -156,6 +156,10 @@
     state.info = info;
     state.changed = 0;
     $("changesrow").hidden = true;
+    state.resized = null;
+    $("resizerow").hidden = !isFAT(info);
+    $("resizeactions").hidden = true;
+    $("resizeinfo").textContent = "";
     state.name = name;
     $("fstype").textContent = info.encryption ? `${info.type} in ${encName(info.encryption)}` : info.type;
     $("fstype").title = info.forced ? "chosen in the Filesystem list" : "detected";
@@ -485,6 +489,97 @@
     }
   }
   state.downloadModified = downloadModified;
+
+  // ---- copy to a resized image --------------------------------------------
+  //
+  // A volume in this tab cannot be truncated, so the way to grow a FAT image,
+  // or to change FAT12/16/32, is a copy: the engine formats a new image of the
+  // chosen size in memory and copies the tree (changes included) into it. The
+  // open image is only read. The copy is downloaded, or opened in its place.
+
+  const RESIZE_MAX_MIB = 256; // the engine's cap, the same as for changes
+  const isFAT = (info) => !!info && /^fat(12|16|32)$/.test(info.type) && !info.encryption;
+  state.resized = null;
+
+  async function resizeCopy(ev) {
+    ev.preventDefault();
+    const mib = Number($("resizesize").value);
+    if (!Number.isInteger(mib) || mib < 1 || mib > RESIZE_MAX_MIB) {
+      status(`The new size is a whole number of MiB, 1 to ${RESIZE_MAX_MIB}.`, true);
+      return;
+    }
+    $("resizeactions").hidden = true;
+    $("resizeinfo").textContent = "";
+    $("resizego").disabled = true;
+    status(`Copying to a ${mib} MiB image…`);
+    const t0 = performance.now();
+    try {
+      const r = await req({ op: "resize", size: mib * 1048576, type: $("resizetype").value, label: $("resizelabel").value }, UNLOCK_TIMEOUT);
+      const i = r.info;
+      state.resized = { type: i.type, size: i.size, label: i.label || "", engineMs: r.ms, endToEndMs: performance.now() - t0 };
+      $("resizeinfo").textContent = `Made ${i.type} of ${human(i.size)}` + (i.label ? `, label ${i.label}` : "") +
+        `, in ${r.ms.toFixed(0)} ms. `;
+      $("resizeactions").hidden = false;
+      status(`Resized copy made: ${i.type}, ${human(i.size)}.`);
+    } catch (err) {
+      // fat32's refusals (the tree does not fit, the root is full, the type
+      // cannot be this size) arrive as sentences; show them as they are.
+      state.resized = null;
+      status("Cannot copy to a resized image: " + err.message, true);
+    } finally {
+      $("resizego").disabled = false;
+    }
+  }
+
+  // fetchCopy reads the copy from the engine, a chunk at a time.
+  async function fetchCopy() {
+    const parts = [];
+    let off = 0, size = 0;
+    do {
+      const r = await req({ op: "copyimage", off, n: CHUNK });
+      size = r.size;
+      if (!r.data || r.data.length === 0) break;
+      parts.push(r.data);
+      off += r.data.length;
+      status(`Assembling the copy: ${human(off)} of ${human(size)}…`);
+    } while (off < size);
+    if (off !== size) throw new Error(`got ${off} of ${size} bytes`);
+    return new Blob(parts, { type: "application/octet-stream" });
+  }
+
+  function copyName() {
+    const base = safeName(state.name || "image");
+    const dot = base.lastIndexOf(".");
+    const stem = dot > 0 ? base.slice(0, dot) : base;
+    const suffix = `-${state.resized.type}-${Math.round(state.resized.size / 1048576)}MiB`;
+    return stem + suffix + (dot > 0 ? base.slice(dot) : ".img");
+  }
+
+  async function downloadCopy() {
+    if (!state.resized) return;
+    try {
+      const name = copyName();
+      save(await fetchCopy(), name);
+      status(`${name}: ${human(state.resized.size)} saved.`);
+    } catch (err) {
+      status("Cannot download the copy: " + err.message, true);
+    }
+  }
+
+  async function openCopy() {
+    if (!state.resized) return;
+    try {
+      const file = new File([await fetchCopy()], copyName(), { type: "application/octet-stream" });
+      await openFile(file);
+    } catch (err) {
+      status("Cannot open the copy: " + err.message, true);
+    }
+  }
+  state.resizeCopy = resizeCopy;
+
+  $("resizeform").addEventListener("submit", resizeCopy);
+  $("resizedl").addEventListener("click", downloadCopy);
+  $("resizeopen").addEventListener("click", openCopy);
 
   // Leaving with changes not downloaded loses them: say so.
   window.addEventListener("beforeunload", (ev) => {

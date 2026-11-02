@@ -489,6 +489,79 @@ func TestModifiedImage(t *testing.T) {
 	}
 }
 
+// TestResizedCopy copies the sample to a bigger FAT16 image through the form:
+// the page shows the type and size, the download opens with the driver and
+// holds the sample's file; an impossible size or type is refused in words and
+// the open image still lists.
+func TestResizedCopy(t *testing.T) {
+	b := launch(t)
+	b.open(t)
+	p := b.page
+	if err := p.Locator("#sample").Click(); err != nil {
+		t.Fatal(err)
+	}
+	b.until(t, "sample opened", `() => document.getElementById("fstype").textContent === "fat32"`, 30*time.Second)
+	if _, err := p.Locator("#resizetype").SelectOption(playwright.SelectOptionValues{Values: &[]string{"fat32"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Locator("#resizesize").Fill("4"); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Locator("#resizego").Click(); err != nil {
+		t.Fatal(err)
+	}
+	b.until(t, "refusal shown", `() => /cannot be formatted/.test(document.getElementById("status").textContent)
+		&& document.getElementById("status").classList.contains("error")`, 15*time.Second)
+	if err := p.Locator("#resizesize").Fill("1000"); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Locator("#resizego").Click(); err != nil {
+		t.Fatal(err)
+	}
+	b.until(t, "size bound shown", `() => /1 to 256/.test(document.getElementById("status").textContent)`, 5*time.Second)
+	if _, err := p.Locator("#resizetype").SelectOption(playwright.SelectOptionValues{Values: &[]string{"fat16"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Locator("#resizesize").Fill("32"); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Locator("#resizego").Click(); err != nil {
+		t.Fatal(err)
+	}
+	b.until(t, "copy made", `() => /fat16/.test(document.getElementById("resizeinfo").textContent)
+		&& /32 MiB/.test(document.getElementById("resizeinfo").textContent)
+		&& !document.getElementById("resizeactions").hidden`, 30*time.Second)
+	dl, err := p.ExpectDownload(func() error { return p.Locator("#resizedl").Click() })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dl.SuggestedFilename() != "sample-fat32-fat16-32MiB.img" {
+		t.Fatalf("download named %q", dl.SuggestedFilename())
+	}
+	path := filepath.Join(t.TempDir(), "copy.img")
+	if err := dl.SaveAs(path); err != nil {
+		t.Fatal(err)
+	}
+	st, err := os.Stat(path)
+	if err != nil || st.Size() != 32<<20 {
+		t.Fatalf("the copy is %v bytes, %v", st, err)
+	}
+	fsys, err := filesystem_fat32.Open(path, -1)
+	if err != nil {
+		t.Fatalf("the copy does not open: %v", err)
+	}
+	defer fsys.Close()
+	if got, err := fsys.ReadFile("/docs/hello.txt"); err != nil || !strings.Contains(string(got), "Hello") {
+		t.Fatalf("the copied file: %q, %v", got, err)
+	}
+	// Opening the copy replaces the open image by it.
+	if err := p.Locator("#resizeopen").Click(); err != nil {
+		t.Fatal(err)
+	}
+	b.until(t, "copy opened", `() => document.getElementById("fstype").textContent === "fat16"
+		&& document.getElementById("fssize").textContent === "32 MiB"`, 30*time.Second)
+}
+
 func TestUnknownImage(t *testing.T) {
 	junk := filepath.Join(t.TempDir(), "junk.bin")
 	os.WriteFile(junk, make([]byte, 1<<20), 0o644)

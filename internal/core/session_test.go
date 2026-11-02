@@ -266,9 +266,22 @@ func TestFilesystemKinds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The filesystem list only: the resize form has a list of its own.
+	list := regexp.MustCompile(`(?s)<select id="kind">.*?</select>`).FindString(string(html))
 	var offered []string
-	for _, m := range regexp.MustCompile(`<option value="([a-z0-9]+)"`).FindAllStringSubmatch(string(html), -1) {
+	for _, m := range regexp.MustCompile(`<option value="([a-z0-9]+)"`).FindAllStringSubmatch(list, -1) {
 		offered = append(offered, m[1])
+	}
+	// The resize form offers exactly the types CopyResized takes.
+	rlist := regexp.MustCompile(`(?s)<select id="resizetype">.*?</select>`).FindString(string(html))
+	roffered := regexp.MustCompile(`<option value="([a-z0-9]+)"`).FindAllStringSubmatch(rlist, -1)
+	if len(roffered) != len(resizeTypes)-1 { // "" is not offered
+		t.Fatalf("the resize form offers %d types, the engine takes %d", len(roffered), len(resizeTypes)-1)
+	}
+	for _, m := range roffered {
+		if _, ok := resizeTypes[m[1]]; !ok {
+			t.Fatalf("the resize form offers %q, which the engine refuses", m[1])
+		}
 	}
 	if strings.Join(offered, ",") != strings.Join(Kinds, ",") {
 		t.Fatalf("the page offers %v, the engine takes %v", offered, Kinds)
