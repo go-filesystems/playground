@@ -76,7 +76,7 @@ jobs:
         with: { go-version: '1.27.3' }
       # Node 26 hangs after unpacking a browser; 22 does not.
       - uses: actions/setup-node@v7
-        with: { node-version: 22 }
+        with: { node-version: 26 }
       - name: Playwright driver and Chromium
         run: |
           echo "PLAYWRIGHT_DRIVER_PATH=$RUNNER_TEMP/pwdriver" >> "$GITHUB_ENV"
