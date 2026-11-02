@@ -59,6 +59,22 @@
       <div><dt>Opened in</dt><dd id="fsopen"></dd></div>
       <div><dt>Explorer</dt><dd><button id="explore" type="button">open in the explorer</button></dd></div>
       <div id="changesrow" hidden><dt>Changes</dt><dd><span id="changes"></span> <button id="imagedl" type="button">download the modified image</button></dd></div>
+      <div id="resizerow" hidden><dt>Resize</dt><dd>
+        <form id="resizeform">
+          <label class="opt">new size <input id="resizesize" type="number" min="1" max="256" step="1" value="64" required> MiB</label>
+          <label class="opt">type
+            <select id="resizetype">
+              <option value="auto" selected>let the size decide</option>
+              <option value="fat12">FAT12</option>
+              <option value="fat16">FAT16</option>
+              <option value="fat32">FAT32</option>
+            </select></label>
+          <label class="opt">label <input id="resizelabel" type="text" maxlength="11" size="12" placeholder="(keep)" autocomplete="off" spellcheck="false"></label>
+          <button id="resizego" type="submit">copy to a resized image</button>
+        </form>
+        <span id="resizeinfo"></span>
+        <span id="resizeactions" hidden><button id="resizedl" type="button">download the copy</button> <button id="resizeopen" type="button">open the copy</button></span>
+      </dd></div>
       <div id="samplerow" hidden><dt>Sample</dt><dd><button id="sampledl" type="button">download the sample image</button></dd></div>
     </dl>
     <section id="explorerbox" class="explorer" hidden aria-label="File explorer">

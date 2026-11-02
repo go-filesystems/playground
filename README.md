@@ -89,6 +89,21 @@ with the changes in it, in the same format. It is read back from the engine in
 4 MiB pieces. Opening another image, or leaving the page, asks first while changes
 are not downloaded.
 
+**Copy to a resized image.** A volume in the tab cannot be truncated, so a FAT image
+cannot grow in place, and a FAT12/16 root cannot grow either. On a FAT image (not
+one inside LUKS), the **Resize** row asks for a new size (1 to 256 MiB, the same
+bound as changes), an optional FAT type (FAT12, FAT16, FAT32, or let the size
+decide, as `mkfs.fat` does) and an optional label, then
+[`fat32.CopyResized`](https://github.com/go-filesystems/fat32) (v0.9.0) formats a new
+image of that size in memory and copies the whole tree into it, your changes
+included. The page shows the type and size it made, and you can **download the
+copy** (`<name>-<type>-<size>MiB.<ext>`) or **open the copy** in place of the image.
+The open image is only read. A request that cannot be met is refused in words and
+nothing is made: the tree does not fit, the root directory needs more entries than a
+FAT12/16 fixed root holds, the size cannot be formatted as the type chosen (FAT32
+needs at least 65525 clusters), or the size is not a whole number of MiB within the
+bound.
+
 A modified FAT32 image passes `fsck_msdos -n` with no warning, since
 `go-filesystems/fat32` v0.5.1. That release writes 0 in a `..` entry under the root
 and keeps the FSInfo free count exact. The test's modified image can be written out

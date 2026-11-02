@@ -17,6 +17,11 @@ type Request struct {
 	Off   int64  `json:"off,omitempty"`
 	N     int64  `json:"n,omitempty"`
 	Cache *bool  `json:"cache,omitempty"`
+	// Size, Type and Label are for resize: the new image's size in bytes, its
+	// FAT type ("auto", "fat12", "fat16", "fat32") and its label.
+	Size  int64  `json:"size,omitempty"`
+	Type  string `json:"type,omitempty"`
+	Label string `json:"label,omitempty"`
 }
 
 // Response is the worker's answer. Bytes travel beside it, not inside it.
@@ -87,6 +92,17 @@ func (s *Session) handle(b []byte, out *Response) ([]byte, error) {
 		return data, err
 	case "image":
 		data, size, err := s.ReadImage(r.Off, r.N)
+		out.Size = size
+		return data, err
+	case "resize":
+		info, err := s.CopyResized(r.Size, r.Type, r.Label)
+		if err != nil {
+			return nil, err
+		}
+		out.Info = &info
+		return nil, nil
+	case "copyimage":
+		data, size, err := s.ReadCopy(r.Off, r.N)
 		out.Size = size
 		return data, err
 	case "stats":
