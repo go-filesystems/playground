@@ -22,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
-        with: { go-version: '1.27.3' }
+        with: { go-version: '1.27.4' }
       - name: build the site (outside the checkout)
         run: go run ./cmd/site build --out "$RUNNER_TEMP/_site" && ls -la "$RUNNER_TEMP/_site"
       - uses: actions/upload-pages-artifact@v5
@@ -50,7 +50,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
-        with: { go-version: '1.27.3' }
+        with: { go-version: '1.27.4' }
       - uses: actions/download-artifact@v8
         with: { name: build-manifest, path: manifest }
       - name: the live site serves this build, byte for byte
@@ -60,12 +60,14 @@ jobs:
 
   live:
     needs: verify
-    runs-on: ubuntu-latest
+    # Playwright's install --with-deps refuses ubuntu 26.04, which
+    # ubuntu-latest now resolves to; 24.04 until Playwright supports it.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
-        with: { go-version: '1.27.3' }
+        with: { go-version: '1.27.4' }
       - uses: actions/setup-node@v7
         with: { node-version: 22 }
       - name: Playwright driver and Chromium
