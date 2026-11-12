@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
-        with: { go-version: '1.27.3' }
+        with: { go-version: '1.27.4' }
       - run: go version
       - name: gofmt
         run: |
@@ -50,7 +50,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
-        with: { go-version: '1.27.3' }
+        with: { go-version: '1.27.4' }
       - run: go test -run '^$' -fuzz '^${{ matrix.target }}$' -fuzztime 45s ${{ matrix.pkg }}
 
   vulns:
@@ -59,7 +59,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
-        with: { go-version: '1.27.3' }
+        with: { go-version: '1.27.4' }
       - name: govulncheck (native and js/wasm)
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
@@ -68,12 +68,14 @@ jobs:
 
   e2e:
     name: browser (headless Chromium)
-    runs-on: ubuntu-latest
+    # Playwright's install --with-deps refuses ubuntu 26.04, which
+    # ubuntu-latest now resolves to; 24.04 until Playwright supports it.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
-        with: { go-version: '1.27.3' }
+        with: { go-version: '1.27.4' }
       # Node 26 hangs after unpacking a browser; 22 does not.
       - uses: actions/setup-node@v7
         with: { node-version: 22 }

@@ -1,6 +1,6 @@
 module github.com/go-filesystems/playground
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/go-fde/apfs v0.3.0
